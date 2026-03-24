@@ -1,0 +1,19 @@
+{
+  "name": "@mss/dashboard",
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Observability UI (Agentic Horizon)",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@mss/core": "workspace:*",
+    "@supabase/supabase-js": "^2.100.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4"
+  }
+}

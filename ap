@@ -1,0 +1,173 @@
+/**
+ * @mss/server - Integration Tests
+ * Vertical slice: Voice FSM → Tool Gate → Ledger
+ */
+
+import { describe, it, expect, beforeEach } from "vitest";
+import { MCPSuperServer, createMCPServer } from "../src/server";
+import type { ToolDescriptor } from "@mss/core/resources/tool";
+
+describe("MCPSuperServer Vertical Slice", () => {
+  let server: MCPSuperServer;
+
+  const readOnlyTool: ToolDescriptor = {
+    tool_id: "read:weather",
+    version: "1.0.0",
+    capabilities: ["read"],
+    side_effect_class: "read_only",
+    available: true,
+  };
+
+  const writeTool: ToolDescriptor = {
+    tool_id: "write:email",
+    version: "1.0.0",
+    capabilities: ["write"],
+    side_effect_class: "irreversible_write",
+    available: true,
+  };
+
+  beforeEach(() => {
+    server = createMCPServer({ gateMode: "permissive" });
+  });
+
+  describe("Session Lifecycle", () => {
+    it("should create a session for a canonical user", async () => {
+      const sessionId = await server.createSession("user-123", "discord");
+      expect(sessionId).toBeDefined();
+      expect(typeof sessionId).toBe("string");
+    });
+
+    it("should transition through voice turn states", async () => {
+      const sessionId = await server.createSession("user-123", "discord");
+      const session = server.getSession(sessionId);
+      expect(session).toBeDefined();
+
+      // Initial state
+      expect(session!.getState()).toBe("idle");
+
+      // Audio start -> listening
+      await server.onAudioStart(sessionId);
+      expect(session!.getState()).toBe("listening");
+    });
+  });
+
+  describe("Tool Invocation Pipeline", () => {
+    it("should allow tool invocation through permissive gate", async () => {
+      const sessionId = await server.createSession("user-123", "discord");
+      
+      // Register the tool with the gate
+      (server as any).gate.registerTool(readOnlyTool);
+
+      const result = await server.invokeTool(sessionId, "read:weather", {});
+      expect(result.decision).toBe("allow");
+      expect(result.result).toBeDefined();
+    });
+  });
+
+  describe("Budget Tracking", () => {
+    it("should track budget for tool calls", async () => {
+      const sessionId = await server.createSession("user-123", "discord");
+      (server as any).gate.registerTool(readOnlyTool);
+
+      await server.invokeTool(sessionId, "read:weather", {});
+      await server.invokeTool(sessionId, "read:weather", {});
+
+      const budget = (server as any).gate.getBudget(sessionId);
+      expect(budget.calls_made).toBe(2);
+    });
+  });
+
+  describe("Identity Operations", () => {
+    it("should link platform identity to canonical user", async () => {
+      const result = await server.linkIdentity("discord", "user#1234");
+      expect(result.isNew).toBe(true);
+      expect(result.canonicalUserId).toBeDefined();
+    });
+
+    it("should reuse canonical user for subsequent links", async () => {
+      const first = await server.linkIdentity("discord", "user#1234");
+      const second = await server.linkIdentity("telegram", "user#5678", first.canonicalUserId);
+      expect(second.canonicalUserId).toBe(first.canonicalUserId);
+      expect(second.isNew).toBe(false);
+    });
+  });
+
+  describe("Event Replay", () => {
+    it("should record events for session", async () => {
+      const sessionId = await server.createSession("user-123", "discord");
+      const events = await server.replaySession(sessionId);
+      expect(events.length).toBeGreaterThan(0);
+    });
+
+    it("should verify ledger integrity", async () => {
+      const result = await server.verifyIntegrity("default", "default");
+      expect(result.valid).toBe(true);
+    });
+  });
+
+  describe("Barge-In Interrupt", () => {
+    it("should handle barge-in during processing", async () => {
+      const sessionId = await server.createSession("user-123", "discord");
+      await server.onAudioStart(sessionId);
+      await server.onASRFinal(sessionId, "Hello");
+
+      // Barge-in
+      await server.onBargeIn(sessionId);
+      const session = server.getSession(sessionId);
+      expect(session!.getState()).toBe("listening");
+    });
+
+    it("should handle barge-in during TTS (speaking state)", async () => {
+      const sessionId = await server.createSession("user-123", "discord");
+      await server.onAudioStart(sessionId);
+      await server.onASRFinal(sessionId, "Hello");
+
+      // Simulate TTS start by transitioning directly
+      const session = server.getSession(sessionId)!;
+      session.transition({ type: "TTS_START" });
+
+      // Barge-in
+      await server.onBargeIn(sessionId);
+      expect(session.getState()).toBe("listening");
+    });
+  });
+});
+
+describe("Gate Mode Configurations", () => {
+  it("permissive gate allows read-only tools", async () => {
+    const server = createMCPServer({ gateMode: "permissive" });
+    const sessionId = await server.createSession("user-123", "discord");
+    
+    // Register tool
+    (server as any).gate.registerTool({
+      tool_id: "read:test",
+      version: "1.0.0",
+      capabilities: [],
+      side_effect_class: "read_only",
+      available: true,
+    });
+
+    const result = await server.invokeTool(sessionId, "read:test", {});
+    expect(result.decision).toBe("allow");
+  });
+
+  it("read_only gate blocks write tools", async () => {
+    const server = createMCPServer({ gateMode: "read_only" });
+    const sessionId = await server.createSession("user-123", "discord");
+    
+    (server as any).gate.registerTool({
+      tool_id: "write:anything",
+      version: "1.0.0",
+      capabilities: [],
+      side_effect_class: "reversible_write",
+      available: true,
+    });
+
+    const result = await server.invokeTool(sessionId, "write:anything", {});
+    expect(result.decision).toBe("deny");
+  });
+
+  // Note: The write_approval gate requires the server to look up the tool's
+  // side_effect_class and pass it in requested_effect. Currently the server
+  // always passes read_only. This is a known limitation to be fixed.
+});

@@ -1,0 +1,325 @@
+/**
+ * MCP Super-Server — Server Vertical Slice
+ * Whitepaper §4.2: Core Components
+ */
+
+import { randomUUID } from "crypto";
+import {
+  VoiceSessionFSM,
+  createVoiceSession,
+  type VoiceFSMEffect,
+} from "@mss/voice";
+import {
+  PolicyToolGate,
+  createPermissiveGate,
+  createReadOnlyGate,
+  createWriteApprovalGate,
+  BudgetTracker,
+} from "@mss/tools";
+import { createInMemoryLedger } from "@mss/ledger";
+import type { EventLedger } from "@mss/core/contracts/ledger";
+import {
+  IdentityResolver,
+  createIdentityResolver,
+  type SupportedPlatform,
+} from "@mss/identity";
+import type { GateContext } from "@mss/core/policies/gates";
+import type { CoreEvent } from "@mss/core/events";
+
+// ============================================================================
+// Server Configuration
+// ============================================================================
+
+export interface MCPServerConfig {
+  gateMode: "permissive" | "read_only" | "write_approval";
+  maxCallsPerSession: number;
+  maxCostPerSession?: number;
+}
+
+const DEFAULT_CONFIG: MCPServerConfig = {
+  gateMode: "write_approval",
+  maxCallsPerSession: 10,
+  maxCostPerSession: 1000,
+};
+
+// ============================================================================
+// MCP Super-Server
+// ============================================================================
+
+export class MCPSuperServer {
+  private config: MCPServerConfig;
+  private gate: PolicyToolGate;
+  private ledger: ReturnType<typeof createInMemoryLedger>;
+  private identityResolver: IdentityResolver;
+  private sessions: Map<string, VoiceSessionFSM>;
+  private toolExecutor: MockToolExecutor;
+
+  constructor(config: Partial<MCPServerConfig> = {}) {
+    this.config = { ...DEFAULT_CONFIG, ...config };
+    
+    this.ledger = createInMemoryLedger();
+    this.identityResolver = createIdentityResolver();
+    
+    switch (this.config.gateMode) {
+      case "permissive":
+        this.gate = createPermissiveGate();
+        break;
+      case "read_only":
+        this.gate = createReadOnlyGate();
+        break;
+      case "write_approval":
+      default:
+        this.gate = createWriteApprovalGate();
+        break;
+    }
+    
+    this.sessions = new Map();
+    this.toolExecutor = new MockToolExecutor();
+  }
+
+  // --------------------------------------------------------------------------
+  // Session Management
+  // --------------------------------------------------------------------------
+
+  async createSession(
+    canonicalUserId: string,
+    channel: SupportedPlatform
+  ): Promise<string> {
+    const fsm = createVoiceSession(
+      canonicalUserId as any,
+      channel
+    );
+    const sessionId = fsm.getContext().session_id as string;
+    
+    this.sessions.set(sessionId, fsm);
+    
+    await this.ledger.append({
+      event_type: "SessionCreated" as any,
+      session_id: sessionId,
+      canonical_user_id: canonicalUserId,
+      channel,
+      timestamp: new Date().toISOString(),
+    } as any);
+    
+    return sessionId;
+  }
+
+  getSession(sessionId: string): VoiceSessionFSM | undefined {
+    return this.sessions.get(sessionId);
+  }
+
+  // --------------------------------------------------------------------------
+  // Voice Turn Processing
+  // --------------------------------------------------------------------------
+
+  async onAudioStart(sessionId: string): Promise<void> {
+    const fsm = this.sessions.get(sessionId);
+    if (!fsm) throw new Error(`Session ${sessionId} not found`);
+    
+    const result = fsm.transition({ type: "AUDIO_START" });
+    await this.executeEffects(result.effects, fsm);
+  }
+
+  async onASRFinal(sessionId: string, text: string): Promise<void> {
+    const fsm = this.sessions.get(sessionId);
+    if (!fsm) throw new Error(`Session ${sessionId} not found`);
+    
+    const result = fsm.transition({ type: "ASR_FINAL", text });
+    await this.executeEffects(result.effects, fsm);
+  }
+
+  async onAudioEnd(sessionId: string): Promise<void> {
+    const fsm = this.sessions.get(sessionId);
+    if (!fsm) throw new Error(`Session ${sessionId} not found`);
+    
+    const result = fsm.transition({ type: "AUDIO_END" });
+    await this.executeEffects(result.effects, fsm);
+  }
+
+  async onBargeIn(sessionId: string): Promise<void> {
+    const fsm = this.sessions.get(sessionId);
+    if (!fsm) throw new Error(`Session ${sessionId} not found`);
+    
+    const result = fsm.transition({ type: "AUDIO_START" });
+    await this.executeEffects(result.effects, fsm);
+  }
+
+  // --------------------------------------------------------------------------
+  // Tool Invocation Pipeline
+  // --------------------------------------------------------------------------
+
+  async invokeTool(
+    sessionId: string,
+    toolId: string,
+    input: Record<string, unknown>
+  ): Promise<{ decision: "allow" | "deny" | "require_human"; result?: unknown }> {
+    const fsm = this.sessions.get(sessionId);
+    const canonicalUserId = fsm?.getContext().canonical_user_id ?? "anonymous";
+    
+    const ctx: GateContext = {
+      session_id: sessionId,
+      canonical_user_id: canonicalUserId,
+      tool_id: toolId,
+      purpose: `Tool invocation: ${toolId}`,
+      requested_effect: {
+        sideEffect: "read_only",
+        approval: "auto",
+      },
+    };
+    
+    const gateResult = await this.gate.evaluate(ctx);
+    
+    if (gateResult.decision === "deny") {
+      await this.ledger.append({
+        event_type: "ToolCallDenied" as any,
+        event_id: randomUUID(),
+        timestamp: new Date().toISOString(),
+        tool_id: toolId,
+        reason: gateResult.reason,
+        session_id: sessionId,
+      } as any);
+      
+      return { decision: "deny" };
+    }
+    
+    if (gateResult.decision === "require_human") {
+      return { decision: "require_human" };
+    }
+    
+    const toolResult = await this.toolExecutor.execute(toolId, input);
+    this.gate.recordToolCall(sessionId as any, toolId as any);
+    
+    await this.ledger.append({
+      event_type: "ToolCallCompleted" as any,
+      event_id: randomUUID(),
+      timestamp: new Date().toISOString(),
+      tool_call_id: randomUUID(),
+      tool_id: toolId,
+      ok: toolResult.ok,
+      output: toolResult.output,
+      duration_ms: toolResult.duration_ms,
+    } as any);
+    
+    return { decision: "allow", result: toolResult.output };
+  }
+
+  // --------------------------------------------------------------------------
+  // Identity Operations
+  // --------------------------------------------------------------------------
+
+  async linkIdentity(
+    platform: SupportedPlatform,
+    platformIdentityId: string,
+    canonicalUserId?: string
+  ): Promise<{ canonicalUserId: string; isNew: boolean }> {
+    if (canonicalUserId) {
+      await this.identityResolver.link(
+        canonicalUserId,
+        platform,
+        platformIdentityId
+      );
+      return { canonicalUserId, isNew: false };
+    }
+    
+    const newCanonicalId = await this.identityResolver.create(platform, platformIdentityId);
+    return { canonicalUserId: newCanonicalId, isNew: true };
+  }
+
+  // --------------------------------------------------------------------------
+  // Event Replay
+  // --------------------------------------------------------------------------
+
+  async replaySession(sessionId: string): Promise<CoreEvent[]> {
+    const events: CoreEvent[] = [];
+    const replayed = await this.ledger.replay({ from_index: 0 });
+    
+    for await (const r of replayed) {
+      const event = r.event as CoreEvent;
+      if ("session_id" in event && (event as any).session_id === sessionId) {
+        events.push(event);
+      }
+    }
+    
+    return events;
+  }
+
+  async verifyIntegrity(): Promise<{ valid: boolean }> {
+    // Basic integrity check - in production, this would check specific world/timeline
+    const ledger = this.ledger as unknown as { verifyIntegrity?: Function };
+    if (ledger.verifyIntegrity) {
+      const result = await ledger.verifyIntegrity("default" as any, "main" as any);
+      return { valid: result.valid };
+    }
+    return { valid: true };
+  }
+
+  // --------------------------------------------------------------------------
+  // Effect Execution
+  // --------------------------------------------------------------------------
+
+  private async executeEffects(effects: VoiceFSMEffect[], fsm: VoiceSessionFSM): Promise<void> {
+    for (const effect of effects) {
+      switch (effect.type) {
+        case "emit_tool_canceled":
+          await this.ledger.append({
+            event_type: "ToolCallCanceled" as any,
+            event_id: randomUUID(),
+            timestamp: new Date().toISOString(),
+            tool_call_id: effect.tool_call_id,
+            reason: effect.reason,
+            partial_execution: false,
+          } as any);
+          break;
+        case "cancel_tts":
+          break;
+        case "cancel_pending_tools":
+          for (const pendingId of fsm.getContext().pending_tool_calls) {
+            await this.toolExecutor.cancel(pendingId);
+          }
+          break;
+        case "log":
+          console.log(`[FSM] ${effect.message}`);
+          break;
+      }
+    }
+  }
+}
+
+// ============================================================================
+// Mock Tool Executor
+// ============================================================================
+
+class MockToolExecutor {
+  async execute(toolId: string, _input: Record<string, unknown>): Promise<{
+    ok: boolean;
+    output?: unknown;
+    duration_ms: number;
+  }> {
+    const start = Date.now();
+    await new Promise(resolve => setTimeout(resolve, 10));
+    
+    if (toolId.startsWith("read:") || toolId.startsWith("fs:")) {
+      return { ok: true, output: { data: "mock read result" }, duration_ms: Date.now() - start };
+    }
+    if (toolId.startsWith("write:") || toolId.startsWith("db:")) {
+      return { ok: true, output: { written: true, rows: 1 }, duration_ms: Date.now() - start };
+    }
+    return { ok: true, output: { executed: true }, duration_ms: Date.now() - start };
+  }
+
+  async cancel(_callId: string): Promise<boolean> {
+    return true;
+  }
+
+  cancelAll(): string[] {
+    return [];
+  }
+}
+
+// ============================================================================
+// Factory
+// ============================================================================
+
+export function createMCPServer(config?: Partial<MCPServerConfig>): MCPSuperServer {
+  return new MCPSuperServer(config);
+}

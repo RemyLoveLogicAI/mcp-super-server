@@ -1,0 +1,108 @@
+{
+  "name": "@mss/core",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./events": {
+      "types": "./dist/events/index.d.ts",
+      "import": "./dist/events/index.js"
+    },
+    "./events/base": {
+      "types": "./dist/events/base.d.ts",
+      "import": "./dist/events/base.js"
+    },
+    "./events/identity": {
+      "types": "./dist/events/identity.d.ts",
+      "import": "./dist/events/identity.js"
+    },
+    "./events/voice": {
+      "types": "./dist/events/voice.d.ts",
+      "import": "./dist/events/voice.js"
+    },
+    "./events/tools": {
+      "types": "./dist/events/tools.d.ts",
+      "import": "./dist/events/tools.js"
+    },
+    "./events/world": {
+      "types": "./dist/events/world.d.ts",
+      "import": "./dist/events/world.js"
+    },
+    "./resources": {
+      "types": "./dist/resources/index.d.ts",
+      "import": "./dist/resources/index.js"
+    },
+    "./resources/identity": {
+      "types": "./dist/resources/identity.d.ts",
+      "import": "./dist/resources/identity.js"
+    },
+    "./resources/tool": {
+      "types": "./dist/resources/tool.d.ts",
+      "import": "./dist/resources/tool.js"
+    },
+    "./resources/voiceSession": {
+      "types": "./dist/resources/voiceSession.d.ts",
+      "import": "./dist/resources/voiceSession.js"
+    },
+    "./resources/worldState": {
+      "types": "./dist/resources/worldState.d.ts",
+      "import": "./dist/resources/worldState.js"
+    },
+    "./policies": {
+      "types": "./dist/policies/index.d.ts",
+      "import": "./dist/policies/index.js"
+    },
+    "./policies/gates": {
+      "types": "./dist/policies/gates.d.ts",
+      "import": "./dist/policies/gates.js"
+    },
+    "./policies/effects": {
+      "types": "./dist/policies/effects.d.ts",
+      "import": "./dist/policies/effects.js"
+    },
+    "./policies/trust": {
+      "types": "./dist/policies/trust.d.ts",
+      "import": "./dist/policies/trust.js"
+    },
+    "./contracts": {
+      "types": "./dist/contracts/index.d.ts",
+      "import": "./dist/contracts/index.js"
+    },
+    "./contracts/ledger": {
+      "types": "./dist/contracts/ledger.d.ts",
+      "import": "./dist/contracts/ledger.js"
+    },
+    "./contracts/routing": {
+      "types": "./dist/contracts/routing.d.ts",
+      "import": "./dist/contracts/routing.js"
+    },
+    "./contracts/toolCall": {
+      "types": "./dist/contracts/toolCall.d.ts",
+      "import": "./dist/contracts/toolCall.js"
+    },
+    "./ids": {
+      "types": "./dist/ids.d.ts",
+      "import": "./dist/ids.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.100.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  }
+}

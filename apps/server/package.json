@@ -1,0 +1,29 @@
+{
+  "name": "@mss/server",
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "http": "node dist/http.js"
+  },
+  "dependencies": {
+    "@mss/context-fabric": "workspace:*",
+    "@mss/core": "workspace:*",
+    "@mss/gateway": "workspace:*",
+    "@mss/identity": "workspace:*",
+    "@mss/ledger": "workspace:*",
+    "@mss/mesh": "workspace:*",
+    "@mss/orchestrator": "workspace:*",
+    "@mss/tools": "workspace:*",
+    "@mss/voice": "workspace:*",
+    "@mss/worlds": "workspace:*",
+    "@supabase/supabase-js": "^2.100.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4"
+  }
+}

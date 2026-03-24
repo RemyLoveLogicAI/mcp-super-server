@@ -1,0 +1,12 @@
+flowchart LR
+  CLI[CLI Runner] --> SERVER[apps/server]
+  SERVER --> ORCH[packages/orchestrator]
+  SERVER --> VOICE[packages/voice]
+  SERVER --> GATE[packages/tools]
+  SERVER --> LEDGER[packages/ledger]
+  SERVER --> CTX[packages/context-fabric]
+  SERVER --> ID[packages/identity]
+  ORCH --> TOOL[Real Tool Executor]
+  VOICE --> LEDGER
+  CTX --> LEDGER
+  ID --> CTX

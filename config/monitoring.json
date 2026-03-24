@@ -1,0 +1,166 @@
+{
+  "$schema": "https://mcp-super-server.io/schemas/monitoring.json",
+  "version": "1.0.0",
+  "name": "MCP Super-Server Monitoring",
+  "description": "Log monitoring and alerting configuration for Loki",
+  "loki": {
+    "endpoint": "http://localhost:3100",
+    "retention": "24h",
+    "labels": {
+      "app": "mcp-super-server",
+      "environment": "development"
+    }
+  },
+  "metrics": {
+    "error_rate": {
+      "name": "error_rate",
+      "description": "Rate of error logs per minute",
+      "query": "sum(rate({app=\"mcp-super-server\"} |= \"error\" |= \"[Error]\" [1m]))",
+      "unit": "errors/min",
+      "thresholds": {
+        "warning": 0.1,
+        "critical": 1.0
+      }
+    },
+    "session_creation_rate": {
+      "name": "session_creation_rate",
+      "description": "Rate of voice session creation events",
+      "query": "sum(rate({app=\"mcp-super-server\"} |= \"emit_turn_started\" [1m]))",
+      "unit": "sessions/min",
+      "thresholds": {
+        "warning": 100,
+        "critical": 500
+      }
+    },
+    "tool_invocation_rate": {
+      "name": "tool_invocation_rate",
+      "description": "Rate of tool invocations",
+      "query": "sum(rate({app=\"mcp-super-server\"} |= \"ToolCallCompleted\" or |~ \"orchestrator.*step_started\" [1m]))",
+      "unit": "calls/min",
+      "thresholds": {
+        "warning": 200,
+        "critical": 1000
+      }
+    },
+    "voice_turn_latency": {
+      "name": "voice_turn_latency",
+      "description": "Voice turn processing duration in milliseconds",
+      "query": "avg_over_time({app=\"mcp-super-server\"} |= \"emit_turn_finalized\" | pattern \"<msg>\" | line_format \"{{.msg}}\" [5m])",
+      "unit": "ms",
+      "thresholds": {
+        "warning": 500,
+        "critical": 2000
+      }
+    },
+    "plan_execution_duration": {
+      "name": "plan_execution_duration",
+      "description": "Average plan execution time",
+      "query": "avg({app=\"mcp-super-server\"} |= \"orchestrator\" |= \"plan_completed\" | json | unwrap duration_ms [5m])",
+      "unit": "ms",
+      "thresholds": {
+        "warning": 5000,
+        "critical": 10000
+      }
+    },
+    "tool_gate_denials": {
+      "name": "tool_gate_denials",
+      "description": "Rate of tool gate denial decisions",
+      "query": "sum(rate({app=\"mcp-super-server\"} |= \"BUDGET_EXCEEDED\" or |= \"TOOL_BLOCKED\" or |= \"deny\" [1m]))",
+      "unit": "denials/min",
+      "thresholds": {
+        "warning": 10,
+        "critical": 50
+      }
+    },
+    "barge_in_rate": {
+      "name": "barge_in_rate",
+      "description": "Rate of voice session interruptions/barge-ins",
+      "query": "sum(rate({app=\"mcp-super-server\"} |= \"emit_tool_canceled\" |= \"barge\" [1m]))",
+      "unit": "barge-ins/min",
+      "thresholds": {
+        "warning": 50,
+        "critical": 200
+      }
+    },
+    "plan_failure_rate": {
+      "name": "plan_failure_rate",
+      "description": "Rate of failed plan executions",
+      "query": "sum(rate({app=\"mcp-super-server\"} |= \"orchestrator\" |= \"plan_failed\" or |= \"step_failed\" [1m]))",
+      "unit": "failures/min",
+      "thresholds": {
+        "warning": 5,
+        "critical": 20
+      }
+    },
+    "active_sessions": {
+      "name": "active_sessions",
+      "description": "Current number of active voice sessions",
+      "query": "count_over_time({app=\"mcp-super-server\"} |= \"emit_turn_started\" [1h]) - count_over_time({app=\"mcp-super-server\"} |= \"emit_turn_finalized\" [1h])",
+      "unit": "sessions",
+      "thresholds": {
+        "warning": 100,
+        "critical": 500
+      }
+    }
+  },
+  "dashboards": {
+    "overview": {
+      "title": "MCP Super-Server Overview",
+      "panels": [
+        "error_rate",
+        "session_creation_rate",
+        "tool_invocation_rate",
+        "voice_turn_latency",
+        "plan_execution_duration"
+      ]
+    },
+    "voice": {
+      "title": "Voice Session Metrics",
+      "panels": [
+        "session_creation_rate",
+        "voice_turn_latency",
+        "barge_in_rate",
+        "active_sessions"
+      ]
+    },
+    "orchestrator": {
+      "title": "Orchestrator Performance",
+      "panels": [
+        "tool_invocation_rate",
+        "plan_execution_duration",
+        "plan_failure_rate",
+        "tool_gate_denials"
+      ]
+    }
+  },
+  "log_patterns": {
+    "orchestrator_event": {
+      "pattern": "\\[orchestrator\\] (?<type>\\w+) (?<plan_id>[\\w-]+)(?:/(?<step_id>[\\w-]+))?(?:: (?<message>.+))?",
+      "labels": ["type", "plan_id", "step_id"]
+    },
+    "fsm_event": {
+      "pattern": "\\[FSM\\] (?<message>.+)",
+      "labels": ["message"]
+    },
+    "asr_event": {
+      "pattern": "\\[ASR\\] (?<message>.+)",
+      "labels": ["message"]
+    },
+    "tts_event": {
+      "pattern": "\\[TTS\\] (?<action>\\w+)(?:: )?(?<details>.*)",
+      "labels": ["action", "details"]
+    },
+    "websocket_event": {
+      "pattern": "\\[WS\\] (?<event>\\w+) (?<context>.+): (?<session_id>.+)",
+      "labels": ["event", "context", "session_id"]
+    },
+    "error_event": {
+      "pattern": "\\[Error\\] (?<error>.+)",
+      "labels": ["error"]
+    },
+    "handoff_event": {
+      "pattern": "\\[Handoff\\] (?<agent_id>\\w+) (?<action>\\w+) from (?<from_agent_id>\\w+): (?<reason>.+)",
+      "labels": ["agent_id", "action", "from_agent_id", "reason"]
+    }
+  }
+}

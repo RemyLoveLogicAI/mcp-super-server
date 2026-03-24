@@ -1,0 +1,443 @@
+openapi: 3.0.3
+info:
+  title: MCP Super-Server API
+  description: |
+    Voice-native Model Context Protocol Super-Server with Multimodal Context Fabric,
+    Multi-Agent Orchestration, Event-Sourced World State, and Cross-Platform Identity Mesh.
+  version: 0.0.1
+  contact:
+    name: MCP Super-Server Team
+  license:
+    name: Proprietary
+    url: https://example.com/license
+
+servers:
+  - url: http://localhost:3099
+    description: Local development
+
+tags:
+  - name: Sessions
+    description: Voice session management
+  - name: Voice
+    description: Voice turn processing
+  - name: Tools
+    description: Tool invocation
+  - name: Identity
+    description: Identity operations
+  - name: Plans
+    description: Orchestrator plans
+
+paths:
+  /sessions:
+    post:
+      tags: [Sessions]
+      summary: Create a new voice session
+      operationId: createSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [canonicalUserId, channel]
+              properties:
+                canonicalUserId:
+                  type: string
+                  description: Canonical user identifier
+                channel:
+                  type: string
+                  enum: [discord, telegram, whatsapp, r1, web, mobile]
+                  description: Platform channel
+      responses:
+        '201':
+          description: Session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessionId:
+                    type: string
+                  state:
+                    type: string
+                    enum: [idle, listening, processing, speaking, interrupted]
+
+  /sessions/{sessionId}:
+    get:
+      tags: [Sessions]
+      summary: Get session state
+      operationId: getSession
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Session state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VoiceSessionState'
+        '404':
+          description: Session not found
+
+  /sessions/{sessionId}/audio/start:
+    post:
+      tags: [Voice]
+      summary: Signal audio start (user began speaking)
+      operationId: onAudioStart
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Audio start processed
+
+  /sessions/{sessionId}/audio/end:
+    post:
+      tags: [Voice]
+      summary: Signal audio end
+      operationId: onAudioEnd
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Audio end processed
+
+  /sessions/{sessionId}/asr:
+    post:
+      tags: [Voice]
+      summary: Feed ASR transcription
+      operationId: onASRFinal
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+                  description: Final ASR transcription
+      responses:
+        '200':
+          description: ASR processed
+
+  /sessions/{sessionId}/barge-in:
+    post:
+      tags: [Voice]
+      summary: User interrupt (barge-in)
+      description: Cancels pending TTS and tool calls
+      operationId: onBargeIn
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Barge-in processed
+
+  /sessions/{sessionId}/events:
+    get:
+      tags: [Sessions]
+      summary: Replay session events
+      operationId: replaySession
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CoreEvent'
+
+  /tools/invoke:
+    post:
+      tags: [Tools]
+      summary: Invoke a tool through the policy gate
+      operationId: invokeTool
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionId, toolId, input]
+              properties:
+                sessionId:
+                  type: string
+                toolId:
+                  type: string
+                  description: Tool identifier (e.g., 'web:fetch', 'db:query')
+                input:
+                  type: object
+                  description: Tool-specific input parameters
+      responses:
+        '200':
+          description: Tool invocation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolResult'
+
+  /identity/link:
+    post:
+      tags: [Identity]
+      summary: Link a platform identity to a canonical user
+      operationId: linkIdentity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [platform, platformIdentityId]
+              properties:
+                platform:
+                  type: string
+                  enum: [discord, telegram, whatsapp, r1, web, mobile]
+                platformIdentityId:
+                  type: string
+                canonicalUserId:
+                  type: string
+                  description: Optional - link to existing canonical user
+      responses:
+        '200':
+          description: Identity linked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  canonicalUserId:
+                    type: string
+                  isNew:
+                    type: boolean
+
+  /plans:
+    post:
+      tags: [Plans]
+      summary: Create an execution plan
+      operationId: createPlan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [goal, requestedTools]
+              properties:
+                goal:
+                  type: string
+                  description: Human-readable goal
+                requestedTools:
+                  type: array
+                  items:
+                    type: string
+                  description: Tool IDs to use in plan
+      responses:
+        '201':
+          description: Plan created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionPlan'
+
+  /plans/{planId}/execute:
+    post:
+      tags: [Plans]
+      summary: Execute a plan
+      operationId: executePlan
+      parameters:
+        - name: planId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                onStepComplete:
+                  type: string
+                  description: Webhook URL for step completion callbacks
+      responses:
+        '200':
+          description: Plan executed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionPlan'
+
+  /integrity:
+    post:
+      tags: [Sessions]
+      summary: Verify event ledger integrity
+      operationId: verifyIntegrity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [worldId, timelineId]
+              properties:
+                worldId:
+                  type: string
+                timelineId:
+                  type: string
+      responses:
+        '200':
+          description: Integrity check result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                  brokenAtIndex:
+                    type: integer
+                    nullable: true
+
+components:
+  schemas:
+    VoiceSessionState:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        state:
+          type: string
+          enum: [idle, listening, processing, speaking, interrupted]
+        turnId:
+          type: integer
+        interruptFlag:
+          type: boolean
+        ttsStreamState:
+          type: string
+          enum: [idle, playing, paused, canceled]
+        lastActivityAt:
+          type: string
+          format: date-time
+
+    CoreEvent:
+      type: object
+      discriminator:
+        propertyName: event_type
+      required: [event_type, event_id, timestamp]
+      properties:
+        event_id:
+          type: string
+        event_type:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        actor:
+          type: object
+          properties:
+            canonical_user_id:
+              type: string
+            agent_id:
+              type: string
+            platform:
+              type: string
+            system:
+              type: boolean
+
+    ToolResult:
+      type: object
+      properties:
+        decision:
+          type: string
+          enum: [allow, deny, require_human]
+        result:
+          type: object
+          nullable: true
+        reason:
+          type: string
+          nullable: true
+
+    ExecutionPlan:
+      type: object
+      properties:
+        plan_id:
+          type: string
+        agent_id:
+          type: string
+        goal:
+          type: string
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanStep'
+        budget:
+          type: object
+          properties:
+            max_tool_calls:
+              type: integer
+            max_cost_units:
+              type: integer
+        status:
+          type: string
+          enum: [pending, executing, completed, failed, cancelled]
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    PlanStep:
+      type: object
+      properties:
+        step_id:
+          type: string
+        tool_id:
+          type: string
+        input:
+          type: object
+        depends_on:
+          type: array
+          items:
+            type: string
+        continue_on_failure:
+          type: boolean
+        status:
+          type: string
+          enum: [pending, executing, completed, failed, skipped]
+        result:
+          type: object
+          nullable: true
+        error:
+          type: string
+          nullable: true

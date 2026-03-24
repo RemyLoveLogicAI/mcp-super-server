@@ -1,0 +1,101 @@
+title: MCP Super-Server Architecture
+
+direction: down
+
+# External Systems layer
+external_systems: External Systems {
+  discord: Discord {shape: cloud}
+  telegram: Telegram {shape: cloud}
+  voice_providers: Voice Providers {shape: cloud}
+  supabase: Supabase {shape: cylinder}
+}
+
+# Application Layer
+applications: Applications {
+  server: MCP Super-Server
+  dashboard: Agentic Horizon Dashboard
+  aetheria: Aetheria Demonstrator
+}
+
+# Core Layer (Source of Truth)
+core_layer: Core Layer {
+  core: @mss/core Contracts {
+    shape: diamond
+  }
+}
+
+# Package Layer
+packages: Package Layer {
+  gateway: @mss/gateway
+  voice: @mss/voice
+  ledger: @mss/ledger
+  identity: @mss/identity
+  orchestrator: @mss/orchestrator
+  tools: @mss/tools
+  context_fabric: @mss/context-fabric
+  worlds: @mss/worlds
+  mesh: @mss/mesh
+}
+
+# Connections - External to Apps
+discord -> gateway: WebSocket
+telegram -> gateway: HTTP
+
+# Connections - Gateway flow
+gateway -> voice: Voice Sessions
+gateway -> identity: Platform Auth
+
+# Connections - Core to all (contracts)
+core -> gateway: Events, Policies
+core -> voice: Events, Policies
+core -> ledger: Event Contracts
+core -> identity: ID Contracts
+core -> orchestrator: Planning Contracts
+core -> tools: Tool Contracts
+core -> context_fabric: Resource Contracts
+core -> worlds: World Contracts
+core -> mesh: Routing Contracts
+
+# Connections - Package Interactions
+voice -> ledger: Append Events
+voice -> identity: Resolve User
+voice -> context_fabric: Session Context
+ledger -> context_fabric: Event Sourcing
+orchestrator -> tools: Execute
+tools -> ledger: Audit
+voice_providers -> voice: ASR/TTS
+supabase -> ledger: PostgreSQL
+worlds -> ledger: World Events
+worlds -> orchestrator: Agent Handoff
+mesh -> tools: Route Capabilities
+mesh -> identity: Cross-Platform
+
+# Connections - Server Composition
+server -> voice: Compose
+server -> ledger: Compose
+server -> identity: Compose
+server -> orchestrator: Compose
+server -> tools: Compose
+server -> gateway: Compose
+server -> context_fabric: Compose
+server -> worlds: Compose
+server -> mesh: Compose
+
+# Connections - Dashboard
+ledger -> dashboard: Query Events
+identity -> dashboard: View Mesh
+orchestrator -> dashboard: Monitor Plans
+voice -> dashboard: Session Traces
+
+# Connections - Aetheria
+aetheria -> voice: Demonstrator
+aetheria -> worlds: Game Integration
+aetheria -> orchestrator: Multi-Agent
+
+# Legend
+legend: Legend {
+  core_legend: Core Contracts {shape: diamond}
+  package_legend: Package {shape: rectangle}
+  app_legend: Application {shape: rectangle}
+  external_legend: External {shape: cloud}
+}
