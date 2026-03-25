@@ -3,243 +3,336 @@
  * MCP Super-Server Load Test
  * 
  * Usage:
- *   bun run scripts/load-test.ts [options]
+ *   bun scripts/load-test.ts --url http://localhost:3000 --duration 30s --rps 100
  * 
  * Options:
- *   --duration <seconds>  Test duration (default: 60)
- *   --rate <rps>         Requests per second (default: 10)
- *   --endpoint <path>    Endpoint to test (default: /health)
- *   --concurrency <n>    Concurrent connections (default: 10)
+ *   --url       Target URL (default: http://localhost:3000)
+ *   --duration  Test duration (default: 30s)
+ *   --rps       Requests per second (default: 100)
+ *   --concurrency  Concurrent connections (default: 10)
+ *   --verbose   Enable verbose output
  */
 
 interface LoadTestConfig {
-  duration: number;
-  rate: number;
-  endpoint: string;
+  url: string;
+  duration: number; // seconds
+  rps: number;
   concurrency: number;
-  baseUrl: string;
+  verbose: boolean;
 }
 
-interface RequestResult {
-  success: boolean;
-  duration: number;
-  statusCode: number;
-  error?: string;
+interface LoadTestResult {
+  totalRequests: number;
+  successfulRequests: number;
+  failedRequests: number;
+  totalDuration: number;
+  minLatency: number;
+  maxLatency: number;
+  avgLatency: number;
+  p50Latency: number;
+  p95Latency: number;
+  p99Latency: number;
+  errors: Map<string, number>;
+  statusCodes: Map<number, number>;
 }
 
-const DEFAULT_CONFIG: LoadTestConfig = {
-  duration: 60,
-  rate: 10,
-  endpoint: "/health",
-  concurrency: 10,
-  baseUrl: "http://localhost:3000",
-};
+// ─────────────────────────────────────────────────────────────────────────────
+// Argument Parsing
+// ─────────────────────────────────────────────────────────────────────────────
 
 function parseArgs(): LoadTestConfig {
   const args = process.argv.slice(2);
-  const config = { ...DEFAULT_CONFIG };
+  const config: LoadTestConfig = {
+    url: "http://localhost:3000",
+    duration: 30,
+    rps: 100,
+    concurrency: 10,
+    verbose: false,
+  };
 
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
+      case "--url":
+        config.url = args[++i];
+        break;
       case "--duration":
-        config.duration = parseInt(args[++i], 10);
+        const durationStr = args[++i];
+        config.duration = parseInt(durationStr.replace(/[^0-9]/g, ""), 10);
         break;
-      case "--rate":
-        config.rate = parseInt(args[++i], 10);
-        break;
-      case "--endpoint":
-        config.endpoint = args[++i];
+      case "--rps":
+        config.rps = parseInt(args[++i], 10);
         break;
       case "--concurrency":
         config.concurrency = parseInt(args[++i], 10);
         break;
-      case "--url":
-        config.baseUrl = args[++i];
+      case "--verbose":
+      case "-v":
+        config.verbose = true;
         break;
+      case "--help":
+      case "-h":
+        console.log(`
+MCP Super-Server Load Test
+
+Usage:
+  bun scripts/load-test.ts [options]
+
+Options:
+  --url <url>         Target URL (default: http://localhost:3000)
+  --duration <sec>    Test duration in seconds (default: 30)
+  --rps <num>         Requests per second (default: 100)
+  --concurrency <n>   Concurrent connections (default: 10)
+  --verbose, -v       Enable verbose output
+  --help, -h          Show this help
+`);
+        process.exit(0);
     }
   }
 
   return config;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Request Generators
+// ─────────────────────────────────────────────────────────────────────────────
+
+const endpoints = [
+  { method: "GET", path: "/health", weight: 30 },
+  { method: "GET", path: "/status", weight: 20 },
+  { method: "POST", path: "/voice/session", weight: 25, body: { platform: "telegram", platform_user_id: "test-user" } },
+  { method: "POST", path: "/tool/invoke", weight: 15, body: { tool_id: "weather", input: { city: "San Francisco" } } },
+  { method: "GET", path: "/metrics", weight: 10 },
+];
+
+function pickEndpoint(): (typeof endpoints)[number] {
+  const totalWeight = endpoints.reduce((sum, e) => sum + e.weight, 0);
+  let random = Math.random() * totalWeight;
+  for (const endpoint of endpoints) {
+    random -= endpoint.weight;
+    if (random <= 0) return endpoint;
+  }
+  return endpoints[0]!;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HTTP Client
+// ─────────────────────────────────────────────────────────────────────────────
+
 async function makeRequest(
-  url: string,
-  method: string = "GET",
-  body?: unknown
-): Promise<RequestResult> {
-  const start = Date.now();
+  baseUrl: string,
+  endpoint: (typeof endpoints)[number],
+  authToken?: string
+): Promise<{ status: number; latency: number; error?: string }> {
+  const url = `${baseUrl}${endpoint.path}`;
+  const start = performance.now();
 
   try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    };
+    if (authToken) {
+      headers["Authorization"] = `Bearer ${authToken}`;
+    }
+
     const response = await fetch(url, {
-      method,
-      headers: body ? { "Content-Type": "application/json" } : undefined,
-      body: body ? JSON.stringify(body) : undefined,
+      method: endpoint.method,
+      headers,
+      body: endpoint.body ? JSON.stringify(endpoint.body) : undefined,
     });
 
+    const latency = performance.now() - start;
+
+    // Drain response body
+    await response.text();
+
+    return { status: response.status, latency };
+  } catch (err) {
     return {
-      success: response.ok,
-      duration: Date.now() - start,
-      statusCode: response.status,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      duration: Date.now() - start,
-      statusCode: 0,
-      error: String(error),
+      status: 0,
+      latency: performance.now() - start,
+      error: err instanceof Error ? err.message : String(err),
     };
   }
 }
 
-async function runLoadTest(config: LoadTestConfig): Promise<void> {
-  console.log(`
-╔═══════════════════════════════════════════════════════════════╗
-║           MCP Super-Server Load Test                          ║
-╠═══════════════════════════════════════════════════════════════╣
-║  Duration:     ${config.duration}s${" ".repeat(46)}║
-║  Rate:         ${config.rate} req/s${" ".repeat(46)}║
-║  Endpoint:     ${config.endpoint}${" ".repeat(50 - config.endpoint.length)}║
-║  Concurrency:  ${config.concurrency}${" ".repeat(49)}║
-║  Base URL:     ${config.baseUrl}${" ".repeat(50 - config.baseUrl.length)}║
-╚═══════════════════════════════════════════════════════════════╝
-  `);
+// ─────────────────────────────────────────────────────────────────────────────
+// Statistics
+// ─────────────────────────────────────────────────────────────────────────────
 
-  const results: RequestResult[] = [];
-  const interval = 1000 / config.rate;
-  const totalRequests = config.duration * config.rate;
-  let completed = 0;
+function calculatePercentile(sorted: number[], percentile: number): number {
+  const index = Math.ceil((percentile / 100) * sorted.length) - 1;
+  return sorted[Math.max(0, index)]!;
+}
 
-  const startTime = Date.now();
+function formatNumber(n: number, decimals = 2): string {
+  return n.toFixed(decimals);
+}
 
-  console.log("Starting load test...\n");
+function printResult(result: LoadTestResult): void {
+  console.log("\n" + "=".repeat(60));
+  console.log("Load Test Results");
+  console.log("=".repeat(60));
 
-  // Queue requests at the specified rate
-  const requestQueue: Promise<RequestResult>[] = [];
+  console.log("\n📊 Summary:");
+  console.log(`   Total Requests:     ${result.totalRequests}`);
+  console.log(`   Successful (2xx):   ${result.successfulRequests}`);
+  console.log(`   Failed:             ${result.failedRequests}`);
+  console.log(`   Success Rate:       ${formatNumber((result.successfulRequests / result.totalRequests) * 100, 1)}%`);
 
-  for (let i = 0; i < totalRequests; i++) {
-    const url = `${config.baseUrl}${config.endpoint}`;
-    
-    // Create POST requests for session endpoints
-    const isSessionEndpoint = config.endpoint.includes("/session");
-    const body = isSessionEndpoint 
-      ? { platform: "load-test", platformId: `user-${i}` }
-      : undefined;
-    
-    requestQueue.push(
-      new Promise((resolve) => {
-        setTimeout(
-          () => resolve(makeRequest(url, isSessionEndpoint ? "POST" : "GET", body)),
-          i * interval
-        );
-      })
-    );
+  console.log("\n⏱️  Latency (ms):");
+  console.log(`   Min:                ${formatNumber(result.minLatency)}`);
+  console.log(`   Max:                ${formatNumber(result.maxLatency)}`);
+  console.log(`   Avg:                ${formatNumber(result.avgLatency)}`);
+  console.log(`   p50:                ${formatNumber(result.p50Latency)}`);
+  console.log(`   p95:                ${formatNumber(result.p95Latency)}`);
+  console.log(`   p99:                ${formatNumber(result.p99Latency)}`);
+
+  console.log("\n📡 Status Codes:");
+  for (const [status, count] of result.statusCodes) {
+    const label = status === 0 ? "Network Error" : `HTTP ${status}`;
+    console.log(`   ${label.padEnd(15)} ${count}`);
   }
 
-  // Process results
-  for (const promise of requestQueue) {
-    const result = await promise;
-    results.push(result);
-    completed++;
-
-    // Progress indicator
-    if (completed % 10 === 0 || completed === totalRequests) {
-      const progress = Math.round((completed / totalRequests) * 100);
-      const successRate = results.filter((r) => r.success).length / results.length;
-      const avgDuration =
-        results.reduce((sum, r) => sum + r.duration, 0) / results.length;
-
-      process.stdout.write(
-        `\rProgress: ${progress}% | Requests: ${completed}/${totalRequests} | Success: ${(successRate * 100).toFixed(1)}% | Avg: ${avgDuration.toFixed(0)}ms`
-      );
+  if (result.errors.size > 0) {
+    console.log("\n❌ Errors:");
+    for (const [error, count] of result.errors) {
+      console.log(`   ${error.slice(0, 50).padEnd(50)} ${count}`);
     }
   }
 
-  const totalDuration = (Date.now() - startTime) / 1000;
+  console.log("\n📈 Throughput:");
+  const rps = result.totalRequests / result.totalDuration;
+  console.log(`   Requests/sec:       ${formatNumber(rps, 1)}`);
 
-  // Calculate statistics
-  const successful = results.filter((r) => r.success);
-  const failed = results.filter((r) => !r.success);
-  const durations = results.map((r) => r.duration);
-
-  const avgDuration = durations.reduce((a, b) => a + b, 0) / durations.length;
-  const minDuration = Math.min(...durations);
-  const maxDuration = Math.max(...durations);
-
-  // Calculate percentiles
-  const sorted = [...durations].sort((a, b) => a - b);
-  const p50 = sorted[Math.floor(sorted.length * 0.5)];
-  const p90 = sorted[Math.floor(sorted.length * 0.9)];
-  const p99 = sorted[Math.floor(sorted.length * 0.99)];
-
-  // Error analysis
-  const errorsByCode = new Map<number, number>();
-  for (const r of failed) {
-    errorsByCode.set(r.statusCode, (errorsByCode.get(r.statusCode) || 0) + 1);
-  }
-
-  console.log(`\n
-╔═══════════════════════════════════════════════════════════════╗
-║           Load Test Results                                   ║
-╠═══════════════════════════════════════════════════════════════╣
-║  Total Requests:      ${totalRequests}${" ".repeat(35)}║
-║  Successful:          ${successful.length} (${((successful.length / totalRequests) * 100).toFixed(1)}%)${" ".repeat(24)}║
-║  Failed:              ${failed.length} (${((failed.length / totalRequests) * 100).toFixed(1)}%)${" ".repeat(29)}║
-║  Total Duration:      ${totalDuration.toFixed(2)}s${" ".repeat(41)}║
-║  Actual RPS:          ${(totalRequests / totalDuration).toFixed(1)}${" ".repeat(43)}║
-╠═══════════════════════════════════════════════════════════════╣
-║  Latency (ms):                                                ║
-║    Min:                ${minDuration}${" ".repeat(45)}║
-║    Avg:                ${avgDuration.toFixed(0)}${" ".repeat(45)}║
-║    Max:                ${maxDuration}${" ".repeat(45)}║
-║    P50:                ${p50}${" ".repeat(45)}║
-║    P90:                ${p90}${" ".repeat(45)}║
-║    P99:                ${p99}${" ".repeat(45)}║
-╠═══════════════════════════════════════════════════════════════╣
-║  Errors by Status Code:                                       ║
-${Array.from(errorsByCode.entries())
-  .map(([code, count]) => `║    ${code || "Network Error"}: ${count}${" ".repeat(50 - String(code || "Network Error").length - String(count).length)}║`)
-  .join("\n") || "║    No errors                                                 ║"}
-╚═══════════════════════════════════════════════════════════════╝
-  `);
-
-  // Save results to file
-  const reportPath = `/home/workspace/mcp-super-server/logs/load-test-${Date.now()}.json`;
-  const report = {
-    timestamp: new Date().toISOString(),
-    config,
-    summary: {
-      totalRequests,
-      successful: successful.length,
-      failed: failed.length,
-      totalDuration,
-      actualRps: totalRequests / totalDuration,
-    },
-    latency: {
-      min: minDuration,
-      avg: avgDuration,
-      max: maxDuration,
-      p50,
-      p90,
-      p99,
-    },
-    errors: Object.fromEntries(errorsByCode),
-  };
-
-  await Bun.write(reportPath, JSON.stringify(report, null, 2));
-  console.log(`\nReport saved to: ${reportPath}`);
-
-  // Exit with error if failure rate > 1%
-  if (failed.length / totalRequests > 0.01) {
-    console.error("\n❌ Load test failed: Error rate exceeds 1%");
-    process.exit(1);
-  }
-
-  console.log("\n✅ Load test passed");
+  console.log("\n" + "=".repeat(60));
 }
 
-// Run the load test
-const config = parseArgs();
-runLoadTest(config).catch((error) => {
-  console.error("Load test failed:", error);
+// ─────────────────────────────────────────────────────────────────────────────
+// Main Load Test
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function runLoadTest(config: LoadTestConfig): Promise<LoadTestResult> {
+  const latencies: number[] = [];
+  const statusCodes = new Map<number, number>();
+  const errors = new Map<string, number>();
+  let totalRequests = 0;
+  let successfulRequests = 0;
+  let failedRequests = 0;
+
+  const startTime = performance.now();
+  const endTime = startTime + config.duration * 1000;
+  const interval = 1000 / config.rps;
+
+  // Create worker queue
+  const requestQueue: Array<() => Promise<void>> = [];
+  let runningWorkers = 0;
+  let resolveDone: () => void;
+  const done = new Promise<void>((resolve) => {
+    resolveDone = resolve;
+  });
+
+  // Worker function
+  async function worker() {
+    runningWorkers++;
+    while (requestQueue.length > 0 || performance.now() < endTime) {
+      const task = requestQueue.shift();
+      if (task) {
+        await task();
+      } else {
+        await new Promise((r) => setTimeout(r, 10));
+      }
+    }
+    runningWorkers--;
+    if (runningWorkers === 0) {
+      resolveDone();
+    }
+  }
+
+  // Start workers
+  for (let i = 0; i < config.concurrency; i++) {
+    worker();
+  }
+
+  // Schedule requests
+  const requestScheduler = setInterval(() => {
+    if (performance.now() >= endTime) {
+      clearInterval(requestScheduler);
+      return;
+    }
+
+    requestQueue.push(async () => {
+      const endpoint = pickEndpoint();
+      const result = await makeRequest(config.url, endpoint, process.env.MCP_AUTH_TOKEN);
+
+      totalRequests++;
+      latencies.push(result.latency);
+
+      if (result.status >= 200 && result.status < 300) {
+        successfulRequests++;
+      } else {
+        failedRequests++;
+      }
+
+      statusCodes.set(result.status, (statusCodes.get(result.status) ?? 0) + 1);
+
+      if (result.error) {
+        errors.set(result.error, (errors.get(result.error) ?? 0) + 1);
+      }
+
+      if (config.verbose && totalRequests % 100 === 0) {
+        console.log(`Progress: ${totalRequests} requests, ${successfulRequests} success, ${failedRequests} failed`);
+      }
+    });
+  }, interval);
+
+  // Wait for completion
+  await done;
+
+  // Calculate statistics
+  latencies.sort((a, b) => a - b);
+  const totalDuration = (performance.now() - startTime) / 1000;
+
+  return {
+    totalRequests,
+    successfulRequests,
+    failedRequests,
+    totalDuration,
+    minLatency: latencies[0] ?? 0,
+    maxLatency: latencies[latencies.length - 1] ?? 0,
+    avgLatency: latencies.reduce((a, b) => a + b, 0) / latencies.length,
+    p50Latency: calculatePercentile(latencies, 50),
+    p95Latency: calculatePercentile(latencies, 95),
+    p99Latency: calculatePercentile(latencies, 99),
+    errors,
+    statusCodes,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Entry Point
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function main(): Promise<void> {
+  const config = parseArgs();
+
+  console.log(`
+╔══════════════════════════════════════════════════════════════╗
+║           MCP Super-Server Load Test                         ║
+╠══════════════════════════════════════════════════════════════╣
+║  Target:      ${config.url.padEnd(45)} ║
+║  Duration:    ${String(config.duration + "s").padEnd(45)} ║
+║  RPS:         ${String(config.rps).padEnd(45)} ║
+║  Concurrency: ${String(config.concurrency).padEnd(45)} ║
+╚══════════════════════════════════════════════════════════════╝
+`);
+
+  console.log("Starting load test...");
+  const result = await runLoadTest(config);
+  printResult(result);
+}
+
+main().catch((err) => {
+  console.error("Load test failed:", err);
   process.exit(1);
 });

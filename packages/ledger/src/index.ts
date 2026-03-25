@@ -2,13 +2,15 @@
  * @mss/ledger — Event Ledger
  * Whitepaper §4.2.8
  * 
- * This package will implement:
+ * This package implements:
  * - Append-only event storage
  * - Replay for state derivation
  * - Timeline branching
  * - Integrity verification
  * 
- * Default backend: Supabase/Postgres
+ * Backends:
+ * - Supabase/Postgres (production)
+ * - In-memory (testing/development)
  */
 
 // Re-export core types
@@ -25,7 +27,7 @@ export type {
 } from "@mss/core/contracts";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Ledger Implementation Types (stub)
+// Ledger Implementation Types
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -33,7 +35,7 @@ export type {
  */
 export type LedgerBackendConfig = 
   | { type: "postgres"; connection_string: string }
-  | { type: "supabase"; url: string; key: string }
+  | { type: "supabase"; url: string; key: string; debug?: boolean }
   | { type: "memory" }; // For testing
 
 /**
@@ -54,21 +56,18 @@ export type IntegrityResult = {
   error?: string;
 };
 
-// Implementation intentionally deferred (contract-first)
-
 // ─────────────────────────────────────────────────────────────────────────────
-// Supabase ledger stub
+// Supabase ledger (production)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Create a Supabase-backed ledger (not yet implemented).
- */
-export function createSupabaseLedger(config: { supabaseUrl: string; supabaseServiceKey: string }): never {
-  throw new Error("createSupabaseLedger not implemented");
-}
+export {
+  createSupabaseLedger,
+  SupabaseLedger,
+  type SupabaseLedgerConfig,
+} from "./supabase/index.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// In-memory implementation
+// In-memory implementation (testing)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export { InMemoryLedger, createInMemoryLedger } from "./memory.js";

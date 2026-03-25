@@ -10,11 +10,15 @@
  * - H-001: Input validation (body size, content-type)
  * - H-002: Security headers
  * - H-003: Sanitized error responses
+ * 
+ * Monitoring:
+ * - Prometheus metrics at /metrics
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { MCPSuperServer, createMCPServer } from "./server.js";
+import { createMetricsRegistry, Timer } from "./metrics/index.js";
 
 // ─── Configuration ─────────────────────────────────────────────────────────────
 
@@ -37,6 +41,10 @@ const RATE_LIMIT_MAX_REQUESTS = parseInt(process.env.MCP_RATE_LIMIT || "100", 10
 
 // Request limits
 const MAX_BODY_SIZE = parseInt(process.env.MCP_MAX_BODY_SIZE || "1048576", 10); // 1MB default
+
+// ─── Metrics ──────────────────────────────────────────────────────────────────
+
+const metrics = createMetricsRegistry("mss_");
 
 // ─── Rate Limiter ──────────────────────────────────────────────────────────────
 
@@ -228,13 +236,39 @@ const httpServer = createServer(async (req, res) => {
 
   // Health check - always public for load balancers
   if (url.pathname === "/health" && req.method === "GET") {
+    const timer = new Timer();
     try {
       const health = await server.health();
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(health));
+      metrics.inc("http_requests_total", { method: "GET", path: "/health", status: "200" });
+      metrics.observe("http_request_duration_seconds", timer.elapsed(), { method: "GET", path: "/health" });
     } catch (err) {
       console.error(`[${requestId}] Health check error:`, err);
       sendError(res, "INTERNAL_ERROR", requestId);
+      metrics.inc("http_requests_total", { method: "GET", path: "/health", status: "500" });
+      metrics.observe("http_request_duration_seconds", timer.elapsed(), { method: "GET", path: "/health" });
+    }
+    return;
+  }
+
+  // Prometheus metrics endpoint - public for monitoring systems
+  if (url.pathname === "/metrics" && req.method === "GET") {
+    const timer = new Timer();
+    try {
+      // Update session gauge
+      metrics.set("sessions_active", server.getStatus().activeSessions);
+      
+      const metricsOutput = metrics.export();
+      res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+      res.end(metricsOutput);
+      metrics.inc("http_requests_total", { method: "GET", path: "/metrics", status: "200" });
+      metrics.observe("http_request_duration_seconds", timer.elapsed(), { method: "GET", path: "/metrics" });
+    } catch (err) {
+      console.error(`[${requestId}] Metrics error:`, err);
+      sendError(res, "INTERNAL_ERROR", requestId);
+      metrics.inc("http_requests_total", { method: "GET", path: "/metrics", status: "500" });
+      metrics.observe("http_request_duration_seconds", timer.elapsed(), { method: "GET", path: "/metrics" });
     }
     return;
   }
@@ -250,13 +284,18 @@ const httpServer = createServer(async (req, res) => {
 
   // Status endpoint
   if (url.pathname === "/status" && req.method === "GET") {
+    const timer = new Timer();
     try {
       const status = server.getStatus();
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(status));
+      metrics.inc("http_requests_total", { method: "GET", path: "/status", status: "200" });
+      metrics.observe("http_request_duration_seconds", timer.elapsed(), { method: "GET", path: "/status" });
     } catch (err) {
       console.error(`[${requestId}] Status error:`, err);
       sendError(res, "INTERNAL_ERROR", requestId);
+      metrics.inc("http_requests_total", { method: "GET", path: "/status", status: "500" });
+      metrics.observe("http_request_duration_seconds", timer.elapsed(), { method: "GET", path: "/status" });
     }
     return;
   }
@@ -268,7 +307,7 @@ const httpServer = createServer(async (req, res) => {
       JSON.stringify({
         name: "mcp-super-server",
         version: "0.0.1",
-        endpoints: ["/health", "/status"],
+        endpoints: ["/health", "/status", "/metrics", "/voice/session", "/tool/invoke"],
         documentation: "MCP Super-Server HTTP API",
       })
     );
