@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "policy_version": "2026-03-29.1",
+  "policy_name": "founder-routing-policies",
+  "description": "Defines how signals are routed and prioritized",
+  "priority_rules": [
+    {
+      "id": "RTR-001",
+      "name": "urgent-email",
+      "condition": { "type": ["email.urgent"], "source": "gmail" },
+      "priority": "critical",
+      "route_to": "immediate-action-queue"
+    },
+    {
+      "id": "RTR-002",
+      "name": "github-workflow-failure",
+      "condition": { "type": "github.workflow.failed" },
+      "priority": "high",
+      "route_to": "devops-queue"
+    },
+    {
+      "id": "RTR-003",
+      "name": "pr-review-requested",
+      "condition": { "type": "github.review_requested" },
+      "priority": "high",
+      "route_to": "code-review-queue"
+    },
+    {
+      "id": "RTR-004",
+      "name": "calendar-conflict",
+      "condition": { "type": "calendar.conflict.detected" },
+      "priority": "high",
+      "route_to": "calendar-queue"
+    },
+    {
+      "id": "RTR-005",
+      "name": "task-overdue",
+      "condition": { "type": "task.overdue" },
+      "priority": "high",
+      "route_to": "task-queue"
+    },
+    {
+      "id": "RTR-006",
+      "name": "standard-email",
+      "condition": { "type": "email.received", "source": "gmail" },
+      "priority": "medium",
+      "route_to": "inbox-queue"
+    },
+    {
+      "id": "RTR-007",
+      "name": "drive-updates",
+      "condition": { "type": ["drive.file.created", "drive.file.modified"], "source": "gdrive" },
+      "priority": "low",
+      "route_to": "document-queue"
+    }
+  ],
+  "source_weights": {
+    "gmail": 1.0,
+    "github": 0.9,
+    "gdrive": 0.5,
+    "gcal": 0.8,
+    "slack": 0.7,
+    "linear": 0.85,
+    "notion": 0.6
+  },
+  "fallback_priority": "medium"
+}

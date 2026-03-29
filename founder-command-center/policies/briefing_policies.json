@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "policy_version": "2026-03-29.1",
+  "policy_name": "founder-briefing-policies",
+  "description": "Defines what appears in daily briefs and how",
+  "sections": {
+    "top_priorities": {
+      "max_items": 5,
+      "include_priorities": ["critical", "high"],
+      "sort_by": "priority_then_age",
+      "require_action": true
+    },
+    "blocked_actions": {
+      "max_items": 10,
+      "include_unblock_path": true
+    },
+    "approvals_pending": {
+      "max_items": 10,
+      "include_age": true,
+      "highlight_overdue": true,
+      "overdue_threshold_hours": 4
+    },
+    "execution_metrics": {
+      "include_success_rate": true,
+      "include_latency": true,
+      "include_breakdown_by_source": true
+    },
+    "anomalies": {
+      "min_severity": "medium",
+      "max_items": 5
+    },
+    "recommended_actions": {
+      "max_items": 5,
+      "include_impact_estimate": true
+    }
+  },
+  "delivery": {
+    "schedule": "daily",
+    "time": "08:00",
+    "timezone": "America/Los_Angeles",
+    "channels": ["dashboard", "terminal"],
+    "include_summary_stats": true
+  },
+  "formatting": {
+    "use_markdown": true,
+    "include_receipt_links": true,
+    "include_policy_versions": true
+  }
+}

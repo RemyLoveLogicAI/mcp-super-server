@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "policy_version": "2026-03-29.1",
+  "policy_name": "founder-confidence-policies",
+  "description": "Defines confidence thresholds for auto-approval, escalation, and blocking",
+  "thresholds": {
+    "auto_execute": {
+      "min_confidence": 0.85,
+      "additional_requirements": {
+        "priority": ["medium", "low"],
+        "risk_level": ["medium", "low"]
+      }
+    },
+    "auto_approve": {
+      "min_confidence": 0.90,
+      "additional_requirements": {
+        "risk_level": ["low"]
+      }
+    },
+    "escalate_for_review": {
+      "max_confidence": 0.60,
+      "description": "Decisions below this confidence always escalate"
+    },
+    "block_execution": {
+      "conditions": [
+        { "confidence": { "lt": 0.50 }, "action": "block", "reason": "insufficient_confidence" },
+        { "confidence": { "lt": 0.70 }, "priority": "critical", "action": "block", "reason": "critical_requires_high_confidence" }
+      ]
+    }
+  },
+  "confidence_adjustments": {
+    "source_reliability": {
+      "gmail": 1.0,
+      "github": 0.95,
+      "gdrive": 0.85,
+      "internal": 0.90
+    },
+    "signal_type_reliability": {
+      "email.urgent": 0.95,
+      "github.workflow.failed": 0.99,
+      "calendar.conflict.detected": 0.85
+    }
+  },
+  "decay_policy": {
+    "description": "Confidence decays over time for unprocessed signals",
+    "decay_rate_per_hour": 0.05,
+    "min_confidence_floor": 0.30
+  }
+}

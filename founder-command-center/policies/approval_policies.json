@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "policy_version": "2026-03-29.1",
+  "policy_name": "founder-approval-policies",
+  "description": "Defines when approvals are required for signal-driven actions",
+  "rules": [
+    {
+      "id": "APR-001",
+      "name": "critical-priority-block",
+      "description": "Critical priority signals always require approval and cannot auto-execute",
+      "condition": { "priority": "critical" },
+      "effect": {
+        "requires_approval": true,
+        "approval_type": "single",
+        "auto_deny": true,
+        "escalate_on_timeout": true,
+        "timeout_hours": 1
+      },
+      "enabled": true
+    },
+    {
+      "id": "APR-002",
+      "name": "high-risk-actions",
+      "description": "Actions with high risk classification require approval",
+      "condition": { "risk_level": ["critical", "high"] },
+      "effect": {
+        "requires_approval": true,
+        "approval_type": "single",
+        "auto_deny": false,
+        "escalate_on_timeout": true,
+        "timeout_hours": 4
+      },
+      "enabled": true
+    },
+    {
+      "id": "APR-003",
+      "name": "external-communication",
+      "description": "Actions that send external communications require approval",
+      "condition": { "action_type": ["send.email", "post.message"] },
+      "effect": {
+        "requires_approval": true,
+        "approval_type": "single",
+        "auto_deny": false,
+        "escalate_on_timeout": false,
+        "timeout_hours": 24
+      },
+      "enabled": true
+    },
+    {
+      "id": "APR-004",
+      "name": "low-confidence-auto-escalate",
+      "description": "Decisions with low confidence must be escalated for review",
+      "condition": { "confidence": { "lt": 0.6 } },
+      "effect": {
+        "requires_approval": true,
+        "approval_type": "single",
+        "auto_escalate": true,
+        "escalation_target": "human-review-queue"
+      },
+      "enabled": true
+    },
+    {
+      "id": "APR-005",
+      "name": "auto-execute-safe",
+      "description": "Safe actions with high confidence can auto-execute",
+      "condition": {
+        "priority": ["medium", "low"],
+        "risk_level": ["medium", "low"],
+        "confidence": { "gte": 0.85 }
+      },
+      "effect": {
+        "requires_approval": false,
+        "auto_execute": true
+      },
+      "enabled": true
+    }
+  ],
+  "approvers": {
+    "default": [
+      { "id": "founder", "name": "Remy", "role": "founder", "required": true }
+    ],
+    "by_risk_level": {
+      "critical": [
+        { "id": "founder", "name": "Remy", "role": "founder", "required": true }
+      ],
+      "high": [
+        { "id": "founder", "name": "Remy", "role": "founder", "required": true }
+      ]
+    }
+  },
+  "fallback_policy": {
+    "description": "Default behavior when no rule matches",
+    "requires_approval": true,
+    "approval_type": "single"
+  }
+}
