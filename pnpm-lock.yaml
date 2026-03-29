@@ -106,6 +106,25 @@ importers:
         specifier: ^5.5.4
         version: 5.9.3
 
+  packages/approval-gate:
+    dependencies:
+      '@mss/core':
+        specifier: workspace:*
+        version: link:../core
+      '@mss/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+      '@mss/tools':
+        specifier: workspace:*
+        version: link:../tools
+      hono:
+        specifier: ^4.12.9
+        version: 4.12.9
+    devDependencies:
+      typescript:
+        specifier: ^5.5.4
+        version: 5.9.3
+
   packages/context-fabric:
     dependencies:
       '@mss/core':
@@ -219,6 +238,25 @@ importers:
         specifier: ^5.5.4
         version: 5.9.3
 
+  packages/vigil:
+    dependencies:
+      '@mss/core':
+        specifier: workspace:*
+        version: link:../core
+      '@mss/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+      '@mss/tools':
+        specifier: workspace:*
+        version: link:../tools
+      '@mss/voice':
+        specifier: workspace:*
+        version: link:../voice
+    devDependencies:
+      typescript:
+        specifier: ^5.5.4
+        version: 5.9.3
+
   packages/voice:
     dependencies:
       '@mss/core':
@@ -233,6 +271,25 @@ importers:
       ws:
         specifier: ^8.20.0
         version: 8.20.0
+    devDependencies:
+      typescript:
+        specifier: ^5.5.4
+        version: 5.9.3
+
+  packages/voice-command:
+    dependencies:
+      '@mss/core':
+        specifier: workspace:*
+        version: link:../core
+      '@mss/tools':
+        specifier: workspace:*
+        version: link:../tools
+      '@mss/voice':
+        specifier: workspace:*
+        version: link:../voice
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
     devDependencies:
       typescript:
         specifier: ^5.5.4
@@ -672,6 +729,10 @@ packages:
 
   get-tsconfig@4.13.6:
     resolution: {integrity: sha512-shZT/QMiSHc/YBLxxOkMtgSid5HFoauqCE3/exfsEcwg1WkeqjG+V40yBbBrsD+jW2HDXcs28xOfcbm2jI8Ddw==}
+
+  hono@4.12.9:
+    resolution: {integrity: sha512-wy3T8Zm2bsEvxKZM5w21VdHDDcwVS1yUFFY6i8UobSsKfFceT7TOwhbhfKsDyx7tYQlmRM5FLpIuYvNFyjctiA==}
+    engines: {node: '>=16.9.0'}
 
   iceberg-js@0.8.1:
     resolution: {integrity: sha512-1dhVQZXhcHje7798IVM+xoo/1ZdVfzOMIc8/rgVSijRK38EDqOJoGula9N/8ZI5RD8QTxNQtK/Gozpr+qUqRRA==}
@@ -1260,6 +1321,8 @@ snapshots:
   get-tsconfig@4.13.6:
     dependencies:
       resolve-pkg-maps: 1.0.0
+
+  hono@4.12.9: {}
 
   iceberg-js@0.8.1: {}
 
