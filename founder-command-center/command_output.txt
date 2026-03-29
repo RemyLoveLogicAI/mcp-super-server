@@ -1,0 +1,3 @@
+HIGH PRIORITY: Fix automation immediately
+MEDIUM PRIORITY: Review PRs
+LOW PRIORITY: Check shared docs
