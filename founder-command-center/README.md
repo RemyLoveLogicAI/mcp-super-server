@@ -1,16 +1,16 @@
-# Founder Command Center v1.1
+# Founder Command Center v1.2
 
-## Status: POLICY-GOVERNED
+## Status: STAGING OPERATIONAL
 
-The closed-loop governed execution system with policy-controlled behavior.
+The staging-capable governed execution system with durable persistence, approval UI flow, and external brief delivery.
 
 ## What This Is
 
-A governed execution infrastructure that converts signals into prioritized actions with approval gates, receipts, and daily briefs — **controlled by explicit policy files**.
+A governed execution infrastructure that converts signals into prioritized actions with approval gates, receipts, and daily briefs — **controlled by explicit policy files** and **backed by D1-compatible storage**.
 
 **The Loop**:
 ```
-Signal → Decision → Approval → Action → Receipt → Brief
+Signal → Decision → Approval → Action → Receipt → Brief → Delivery
 ```
 
 ## Version History
@@ -19,6 +19,7 @@ Signal → Decision → Approval → Action → Receipt → Brief
 |---------|--------|-------------|
 | v1.0 | OPERATIONAL | Closed loop with receipts |
 | v1.1 | POLICY-GOVERNED | Behavior controlled by policy files |
+| v1.2 | STAGING OPERATIONAL | D1 schema, storage adapters, brief delivery |
 
 ## Architecture
 
@@ -26,13 +27,49 @@ Signal → Decision → Approval → Action → Receipt → Brief
 
 | Component | Purpose | Location |
 |-----------|---------|----------|
-| **Signal Ingestor** | Receives signals from sources | `signals/inbox.jsonl` |
+| **Signal Ingestor** | Receives signals from sources | `signals/` |
 | **Policy Engine** | Applies policies to decisions | `engine.ts` |
 | **Decision Maker** | Classifies and routes | `core.ts` |
-| **Approval Gate** | Manages approval workflow | `approvals/approvals.jsonl` |
-| **Action Executor** | Executes or blocks actions | `actions/actions.jsonl` |
-| **Receipt Ledger** | Auditable proof trail | `receipts/receipts.jsonl` |
-| **Brief Generator** | Daily operational brief | `daily_brief_*.md` |
+| **Approval Gate** | Manages approval workflow | `approvals/` |
+| **Action Executor** | Executes or blocks actions | `actions/` |
+| **Receipt Ledger** | Auditable proof trail | `receipts/` |
+| **Brief Generator** | Daily operational brief | `briefs/` |
+| **Delivery Layer** | External channel delivery | `delivery/` |
+
+### Storage Layer (v1.2)
+
+| Adapter | Purpose | Location |
+|---------|---------|----------|
+| **StorageAdapter Interface** | Interchangeable backend contract | `storage/storage-adapter.ts` |
+| **FileStorageAdapter** | Local dev, rollback, testing | `storage/file-storage-adapter.ts` |
+| **D1StorageAdapter** | Staging/production persistence | `storage/d1-storage-adapter.ts` |
+
+### D1 Schema (v1.0.0)
+
+| Table | Purpose |
+|-------|---------|
+| `signals` | Normalized input signals |
+| `decisions` | Classification and routing outcomes |
+| `approvals` | Approval requests and resolutions |
+| `actions` | Executable or blocked actions |
+| `receipts` | Immutable audit trail |
+| `briefs` | Generated daily briefs |
+| `brief_deliveries` | External delivery tracking |
+| `dead_letters` | Failed actions |
+
+### Brief Delivery Layer (v1.2)
+
+| Adapter | Channel | Purpose |
+|---------|---------|---------|
+| **TelegramBriefDeliveryAdapter** | Telegram | Immediate mobile delivery |
+| **EmailBriefDeliveryAdapter** | Email | Portable archival delivery |
+
+### Migrations
+
+| Migration | Tables/Indexes |
+|-----------|----------------|
+| `0001_init_founder_command_center.sql` | 8 tables |
+| `0002_indexes.sql` | 13 indexes |
 
 ### Policy Layer
 
@@ -110,8 +147,12 @@ Result: EXECUTED without approval
 ## Running the Loop
 
 ```bash
-cd /home/workspace/founder-command-center
-bun run demo.ts
+# v1.0/v1.1 Demo (policy-controlled)
+cd /home/workspace/mcp-super-server/founder-command-center
+bun run demo_policy.ts
+
+# v1.2 Staging Demo (D1-compatible storage + delivery)
+bun run demo_staging.ts
 ```
 
 ## Integration Points
@@ -137,6 +178,27 @@ bun run demo.ts
 | PROOF 2: CONNECTION | ✓ | `command_loop.py` → `command_output.txt` |
 | PROOF 3: ARTICULATION | ✓ | `COMMAND_LAYER_V1.md` |
 | PROOF 4: GOVERNED EXECUTION | ✓ | Full loop with receipts |
+| PROOF 5: POLICY-CONTROLLED | ✓ | Policy files control behavior |
+| PROOF 6: STAGING OPERABILITY | ✓ | D1 schema, storage adapters, brief delivery |
+
+## Staging Demo Results (v1.2)
+
+```
+Schema Version: 1.0.0
+Policy Version: 2026-03-29.1
+
+▶ Signal Ingestion: 3 signals (critical, medium, low)
+▶ Decision & Policy: 1 requires approval, 2 auto-execute
+▶ Approval Flow: 1 pending → resolved
+▶ Action Execution: 2 succeeded, 1 blocked
+▶ Brief Generation: Daily brief created
+▶ Brief Delivery: Email sent
+
+Verification:
+  ✓ 100% signal persistence
+  ✓ 100% receipt persistence
+  ✓ Brief delivered: YES
+```
 
 ## Status Language
 
