@@ -17,6 +17,9 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { randomBytes, timingSafeEqual } from "node:crypto";
+import { readFile, appendFile, access, constants } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { MCPSuperServer, createMCPServer } from "./server.js";
 import { createMetricsRegistry, Timer } from "./metrics/index.js";
 
@@ -41,6 +44,191 @@ const RATE_LIMIT_MAX_REQUESTS = parseInt(process.env.MCP_RATE_LIMIT || "100", 10
 
 // Request limits
 const MAX_BODY_SIZE = parseInt(process.env.MCP_MAX_BODY_SIZE || "1048576", 10); // 1MB default
+
+// Agent Inbox data path (relative to repo root)
+const __filename = fileURLToPath(import.meta.url);
+const PROJECT_ROOT = path.resolve(path.dirname(__filename), "../../..");
+const INBOX_FILE = path.resolve(
+  PROJECT_ROOT,
+  "founder-command-center",
+  "staging_data",
+  "signals",
+  "signals.jsonl"
+);
+
+const PRIORITY_ORDER: Record<string, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+};
+
+interface InboxSignal {
+  id: string;
+  schema_version?: string;
+  created_at: string;
+  updated_at?: string;
+  source_type: string;
+  source_ref?: string | undefined;
+  title: string;
+  body: string;
+  priority: string;
+  confidence?: number;
+  status?: string;
+  signal_type?: string;
+  correlation_id?: string;
+}
+
+async function ensureInboxFile(): Promise<void> {
+  try {
+    await access(INBOX_FILE, constants.F_OK);
+  } catch {
+    // File does not exist; create an empty file
+    await appendFile(INBOX_FILE, "", "utf8");
+  }
+}
+
+async function loadSignals(): Promise<InboxSignal[]> {
+  await ensureInboxFile();
+  const raw = await readFile(INBOX_FILE, "utf8");
+  const signals: InboxSignal[] = [];
+  for (const line of raw.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      signals.push(JSON.parse(line) as InboxSignal);
+    } catch {
+      // skip malformed lines
+    }
+  }
+  return signals;
+}
+
+function sortSignals(signals: InboxSignal[]): InboxSignal[] {
+  return signals.slice().sort((a, b) => {
+    const pa = PRIORITY_ORDER[a.priority] ?? 99;
+    const pb = PRIORITY_ORDER[b.priority] ?? 99;
+    if (pa !== pb) return pa - pb;
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+}
+
+function generateSignalId(): string {
+  const now = new Date();
+  const y = now.getUTCFullYear();
+  const m = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(now.getUTCDate()).padStart(2, "0");
+  const r = Math.floor(Math.random() * 1000).toString().padStart(3, "0");
+  return `sig_${y}_${m}_${d}_${r}`;
+}
+
+async function saveSignal(signal: InboxSignal): Promise<void> {
+  await ensureInboxFile();
+  await appendFile(INBOX_FILE, JSON.stringify(signal) + "\n", "utf8");
+}
+
+function renderInboxHTML(signals: InboxSignal[]): string {
+  const items = signals
+    .map((s) => {
+      const badgeColor =
+        s.priority === "critical"
+          ? "bg-red-100 text-red-800"
+          : s.priority === "high"
+          ? "bg-orange-100 text-orange-800"
+          : s.priority === "medium"
+          ? "bg-yellow-100 text-yellow-800"
+          : "bg-green-100 text-green-800";
+      return `
+        <article class="p-4 mb-4 bg-white rounded shadow border border-gray-200">
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="text-lg font-semibold text-gray-900">${escapeHtml(s.title)}</h2>
+            <span class="px-2 py-1 text-xs font-bold rounded ${badgeColor} uppercase">${s.priority}</span>
+          </div>
+          <p class="text-gray-700">${escapeHtml(s.body)}</p>
+          <div class="mt-3 text-sm text-gray-500 flex gap-4">
+            <span>Source: ${escapeHtml(s.source_type)}</span>
+            <span>Signal type: ${escapeHtml(s.signal_type || "inbox")}</span>
+            <span>Confidence: ${s.confidence ?? "-"}</span>
+            <span>${new Date(s.created_at).toLocaleString()}</span>
+          </div>
+        </article>`;
+    })
+    .join("");
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agent Inbox — MCP Super-Server</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-6">
+  <div class="max-w-3xl mx-auto">
+    <h1 class="text-3xl font-bold text-gray-900 mb-2">Agent Inbox</h1>
+    <p class="text-gray-600 mb-6">Live signal feed from the Founder Command Center. Post new signals via <code class="bg-gray-200 px-1 rounded">POST /inbox</code>.</p>
+
+    <form id="signal-form" class="bg-white p-4 rounded shadow border border-gray-200 mb-6" onsubmit="postSignal(event)">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <input name="title" type="text" placeholder="Signal title" class="w-full border rounded px-3 py-2" required />
+        <select name="priority" class="w-full border rounded px-3 py-2">
+          <option value="low">Low</option>
+          <option value="medium" selected>Medium</option>
+          <option value="high">High</option>
+          <option value="critical">Critical</option>
+        </select>
+        <input name="source_type" type="text" placeholder="Source (e.g. email, github)" class="w-full border rounded px-3 py-2" />
+        <input name="signal_type" type="text" placeholder="Signal type (e.g. incident.alert)" class="w-full border rounded px-3 py-2" />
+      </div>
+      <textarea name="body" rows="3" placeholder="Signal body..." class="w-full border rounded px-3 py-2 mb-4" required></textarea>
+      <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Ingest Signal</button>
+      <p id="form-status" class="mt-2 text-sm text-gray-600"></p>
+    </form>
+
+    <div id="feed">${items}</div>
+  </div>
+
+  <script>
+    async function postSignal(e) {
+      e.preventDefault();
+      const form = e.target;
+      const data = Object.fromEntries(new FormData(form));
+      data.confidence = 0.9;
+      const status = document.getElementById('form-status');
+      try {
+        const res = await fetch('/inbox', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        if (!res.ok) throw new Error(await res.text());
+        status.textContent = 'Signal ingested. Reloading...';
+        status.className = 'mt-2 text-sm text-green-600';
+        setTimeout(() => window.location.reload(), 750);
+      } catch (err) {
+        status.textContent = 'Error: ' + err.message;
+        status.className = 'mt-2 text-sm text-red-600';
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>`;
+}
+
+function escapeHtml(str: string): string {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
 
 // ─── Metrics ──────────────────────────────────────────────────────────────────
 
@@ -271,6 +459,78 @@ const httpServer = createServer(async (req, res) => {
       metrics.observe("http_request_duration_seconds", timer.elapsed(), { method: "GET", path: "/metrics" });
     }
     return;
+  }
+
+  // ─── Agent Inbox (public signal dashboard + ingestion) ────────────────────────
+
+  if (url.pathname === "/inbox" || url.pathname === "/inbox/") {
+    const timer = new Timer();
+    if (req.method === "GET") {
+      try {
+        const format =
+          url.searchParams.get("format") === "html" ||
+          (req.headers.accept && req.headers.accept.includes("text/html"))
+            ? "html"
+            : "json";
+        const signals = sortSignals(await loadSignals());
+        if (format === "html") {
+          res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+          res.end(renderInboxHTML(signals));
+        } else {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ count: signals.length, signals }));
+        }
+        metrics.inc("http_requests_total", { method: "GET", path: "/inbox", status: "200" });
+        metrics.observe("http_request_duration_seconds", timer.elapsed(), { method: "GET", path: "/inbox" });
+      } catch (err) {
+        console.error(`[${requestId}] Inbox GET error:`, err);
+        sendError(res, "INTERNAL_ERROR", requestId);
+        metrics.inc("http_requests_total", { method: "GET", path: "/inbox", status: "500" });
+        metrics.observe("http_request_duration_seconds", timer.elapsed(), { method: "GET", path: "/inbox" });
+      }
+      return;
+    }
+
+    if (req.method === "POST") {
+      if (!validateContentType(req, ["application/json"])) {
+        sendError(res, "INVALID_CONTENT_TYPE", requestId);
+        return;
+      }
+      try {
+        const body = await readBody(req, MAX_BODY_SIZE);
+        const payload = JSON.parse(body.toString()) as Record<string, unknown>;
+        const now = new Date().toISOString();
+        const signal: InboxSignal = {
+          id: generateSignalId(),
+          schema_version: "1.0.0",
+          created_at: now,
+          updated_at: now,
+          source_type: String(payload.source_type ?? "inbox"),
+          source_ref: payload.source_ref ? String(payload.source_ref) : undefined,
+          title: String(payload.title ?? "New signal"),
+          body: String(payload.body ?? ""),
+          priority: ["critical", "high", "medium", "low"].includes(String(payload.priority))
+            ? String(payload.priority)
+            : "medium",
+          confidence: typeof payload.confidence === "number" ? payload.confidence : 0.9,
+          status: "classified",
+          signal_type: String(payload.signal_type ?? "inbox.received"),
+          correlation_id: `corr_${Date.now()}`,
+        };
+        await saveSignal(signal);
+        console.log(`[${requestId}] INBOX_INGESTED ${signal.id} ${signal.priority} ${signal.title}`);
+        res.writeHead(201, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true, signal }));
+        metrics.inc("http_requests_total", { method: "POST", path: "/inbox", status: "201" });
+        metrics.observe("http_request_duration_seconds", timer.elapsed(), { method: "POST", path: "/inbox" });
+      } catch (err) {
+        console.error(`[${requestId}] Inbox POST error:`, err);
+        sendError(res, "BAD_REQUEST", requestId);
+        metrics.inc("http_requests_total", { method: "POST", path: "/inbox", status: "400" });
+        metrics.observe("http_request_duration_seconds", timer.elapsed(), { method: "POST", path: "/inbox" });
+      }
+      return;
+    }
   }
 
   // ─── Protected Endpoints (auth required) ────────────────────────────────────
