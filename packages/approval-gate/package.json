@@ -12,7 +12,8 @@
     "@mss/core": "workspace:*",
     "@mss/ledger": "workspace:*",
     "@mss/tools": "workspace:*",
-    "hono": "^4.12.9"
+    "hono": "^4.12.9",
+    "nanoid": "^5.0.0"
   },
   "devDependencies": {
     "typescript": "^5.5.4"
