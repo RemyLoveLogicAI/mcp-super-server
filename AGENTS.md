@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |--------|-------|
-| Packages | 13 |
-| Test Files | 9 |
-| Tests | 132 passed, 1 skipped |
-| Security Findings Resolved | 10/15 |
+| Packages | 16 |
+| Test Files | 15 |
+| Tests | 222 passed, 14 skipped |
+| Security Findings Resolved | 0 known vulnerabilities (pnpm audit)
 
 ### Security Controls
 
@@ -35,9 +35,13 @@
 
 ### Live Endpoints
 
-- **Health**: https://mcp-super-server-remysr.zocomputer.io/health
-- **Status**: https://mcp-super-server-remysr.zocomputer.io/status
-- **Dashboard**: https://remysr.zo.space/mcp-dashboard
+- **HTTP API**: https://user:e442d29d72df0e2f70df9afcbb2782be@ab42d822ae45-tunnel-x2oapoyj.devinapps.com
+  - `/health` — public health check
+  - `/status` — server status
+  - `/metrics` — Prometheus metrics
+  - `/voice/session` — create voice session
+  - `/tool/invoke` — invoke tool
+- **Dashboard**: TBD
 
 ---
 

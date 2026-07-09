@@ -36,6 +36,19 @@ If it's not in `@mss/core`, it's not real.
 | `apps/aetheria` | Flagship demonstrator |
 | `apps/dashboard` | Observability UI (Agentic Horizon) |
 
+## Live Demo
+
+A hardened HTTP endpoint is exposed at:
+
+```
+https://user:e442d29d72df0e2f70df9afcbb2782be@ab42d822ae45-tunnel-x2oapoyj.devinapps.com
+```
+
+```bash
+curl -u user:e442d29d72df0e2f70df9afcbb2782be \
+  https://ab42d822ae45-tunnel-x2oapoyj.devinapps.com/health
+```
+
 ## Quick Start
 
 ```bash
