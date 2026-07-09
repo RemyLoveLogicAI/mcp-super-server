@@ -35,7 +35,7 @@
 
 ### Live Endpoints
 
-- **HTTP API**: https://user:e442d29d72df0e2f70df9afcbb2782be@ab42d822ae45-tunnel-x2oapoyj.devinapps.com
+- **HTTP API**: Devin tunnel URL (basic auth `user` / `<token>`)
   - `/health` — public health check
   - `/status` — server status
   - `/metrics` — Prometheus metrics
