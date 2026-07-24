@@ -38,10 +38,11 @@ If it's not in `@mss/core`, it's not real.
 
 ## Live Demo
 
-A hardened HTTP endpoint is exposed at the Devin tunnel URL from `deploy expose` (basic auth `user` / `<token>`). Try:
+A hardened HTTP endpoint is exposed via localtunnel: `https://mcp-super-server-devin.loca.lt`. If a tunnel password page appears, enter `52.183.72.253`. Try:
 
 ```bash
-curl -u user:<token> https://<tunnel>/health
+curl https://mcp-super-server-devin.loca.lt/health
+curl https://mcp-super-server-devin.loca.lt/inbox
 ```
 
 ## Quick Start
