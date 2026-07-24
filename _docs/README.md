@@ -1,57 +1,111 @@
-[Documentation Home](README.md)
+# 📚 mcp-super-server Documentation
+
+Welcome to the complete documentation for this repository. This documentation is automatically generated and maintained by Woden Docbot.
+
+![Health: Healthy](https://img.shields.io/badge/Health-Healthy-green) ![Files Documented: 1](https://img.shields.io/badge/Files_Documented-1-blue) ![Coverage: 100](https://img.shields.io/badge/Coverage-100-green) ![Last Updated: 2026-07-24](https://img.shields.io/badge/Last_Updated-2026--07--24-gray)
+
+## 🔗 Quick Links
+
+[📂 src](./src/README.md)
+[📋 Dependencies](./DEPENDENCIES.md)
+
 
 ---
 
-# 📁 _docs
-
-> **Purpose:** Holds documentation-related source utilities and an index-level place for lightweight tooling and documentation-aware modules used by the project.
-> 
-
-![Organization: Hierarchical](https://img.shields.io/badge/Organization-Hierarchical-blue)
-
-## 📑 Table of Contents
+> Compact TypeScript utilities for managing macOS launchctl‑based system daemons.
 
 
-- [Overview](#overview)
-- [Subdirectories](#subdirectories)
-- [Architecture Notes](#architecture-notes)
 
----
+## 📖 Overview
 
-## Overview
+mcp-super-server is a small support library that provides focused, documentation-aware tooling helpers for system daemon lifecycle operations on macOS. Its concrete offering is a TypeScript module that interfaces with launchctl to start, stop, restart, and query system-level daemons.
 
-This directory is the documentation-focused area of the repository and currently does not contain any root-level files. Its primary role is to host small, focused source utilities that support documentation-aware tooling rather than end-user application code. At the root there are no files; instead, the directory is structured to contain source modules under subdirectories that implement compact utilities used by higher-level documentation systems.
-
-The main subdirectory present is src/, which is intended to hold source code and small utilities. The src/ directory is organized to host focused modules and, as described, primarily contains a tools/ subdirectory that includes a TypeScript module (sdm.ts) implementing a compact system daemon manager utility for macOS. Together, the _docs directory and its src/ subtree provide a place to keep small tooling modules that assist in documentation generation, management, or platform-specific helper tasks, and serve as a support area that integrates with the repository's larger documentation or developer tooling workflows.
+The repository is organized with a src/ root that hosts small utilities and a tools/ subdirectory containing sdm.ts, a compact SDM (system daemon manager) implementation. Higher-level code imports the exported helper from tools/sdm.ts when it needs programmatic control of launchctl-managed daemons; the src location is a logical place to add more system-management helpers in the future.
 
 
-### File Organization
+### 🧩 Key Components
 
-No root-level files exist; content is organized into a src/ subdirectory meant to contain small, focused utility modules (for example a tools/ folder with a TypeScript sdm.ts module). This hierarchical layout separates documentation tooling source from other project code and keeps utilities grouped under src/ for discoverability.
+| Component | Purpose | Technologies |
+| --- | --- | --- |
+| **tools/sdm.ts helper module** | Implements a compact SDM (system daemon manager) that exposes functions to start, stop, restart, and query macOS launchctl-managed daemons. Intended to be imported by higher-level tooling as a support utility. | `TypeScript`, `macOS launchctl` |
+| **src (utilities host)** | Root-level directory that collects small system-management helpers; currently hosts the tools/ module and serves as the logical location for adding additional utilities used by documentation-aware tooling. | `TypeScript` |
 
-## 📂 Subdirectories
 
-This directory contains the following subdirectories:
 
-### [📁 src](./src/README.md)
 
-**Purpose:** Holds source code and small utilities used by documentation-aware tooling; primarily contains a tools subdirectory with a compact TypeScript SDM (system daemon manager) module for macOS.
+**Component Architecture:**
 
-![Files: 0](https://img.shields.io/badge/Files-0-blue)
+```mermaid
+graph TD
+    C0[tools/sdm.ts helper module]
+    C1[src (utilities host)]
+    C0 --> C1
+```
 
----
-## Architecture Notes
+### 🏗️ Architecture
 
-- This directory intentionally separates small documentation-aware utilities from application code by placing them under src/, maintaining a focused and discoverable location for tooling.
-- Root-level absence of files indicates the directory acts as a container for submodules rather than holding top-level documentation pages or assets.
+A small library/module pattern: a TypeScript helper (tools/sdm.ts) provides an implementation-detail API that higher-level code imports to manage macOS launchctl daemons. The repo is organized to collect similar small utilities rather than a standalone application.
 
----
+### 💡 Use Cases
 
-## Navigation
+- ✦ Programmatically start, stop, restart, and query macOS launchctl-managed system daemons from TypeScript-based tooling
+- ✦ Provide a compact support library for documentation-aware or other higher-level tools that require daemon lifecycle operations on macOS
+- ✦ Host and extend small system-management utilities under src/ for future additions
 
-**↑ Parent Directory:** [Go up](../README.md)
-**🔗 Related:** [src](./src/README.md)
+
+
+### 🔧 Technologies
+
+
+**Languages:** ![TypeScript: ](https://img.shields.io/badge/TypeScript--blue)
+![macOS launchctl: ](https://img.shields.io/badge/macOS_launchctl--blue)
 
 ---
 
-*Generated by Woden Docbot*
+## 📑 Documentation Sections
+
+### [src](./src/README.md)
+Holds source code and small utilities used by documentation-aware tooling; primarily contains a tools subdirectory with a compact TypeScript system daemon manager for macOS.
+
+
+This directory currently contains no root-level source files and is organized to host small, focused utility modules used by higher-level code.
+
+---
+
+## 📊 Documentation Statistics
+
+- **Files Documented**: 1
+- **Directories**: 3
+- **Coverage**: 100%
+- **Last Updated**: 2026-07-24
+
+---
+
+## 🧭 How to Navigate
+
+> ℹ️ **INFO**
+> Each directory has its own README.md with detailed information about that section. Use the breadcrumb navigation at the top of each page to navigate back to parent directories.
+
+### Navigation Features
+
+- **Breadcrumbs** - At the top of each page, showing your current location
+- **Directory READMEs** - Each folder has a comprehensive overview
+- **File Documentation** - Click through to individual file documentation
+- **Search** - Use GitHub's search or your IDE's search functionality
+
+---
+
+## 🤖 About Woden DocBot
+
+This documentation is automatically generated and kept up-to-date by Woden DocBot, an AI-powered documentation assistant. DocBot analyzes code on every pull request and updates documentation to reflect changes.
+
+### Features
+
+- **Automatic Updates** - Documentation updates on every PR
+- **Comprehensive Coverage** - Files, functions, classes, and directories
+- **Smart Navigation** - Breadcrumbs, related files, and parent links
+- **AI-Powered** - Uses Azure GPT models for intelligent documentation generation
+
+---
+
+*Generated by Woden DocBot for mcp-super-server*
