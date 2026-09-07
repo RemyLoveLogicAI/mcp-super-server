@@ -252,6 +252,158 @@ const httpServer = createServer(async (req, res) => {
     return;
   }
 
+
+  // Palm / public MCP shim. Federates Director only (KanBot is Zo-loopback).
+  if (url.pathname === "/mcp") {
+    const DIRECTOR = process.env.LOVELOGIC_DIRECTOR_MCP || "https://luvlogic.zo.space/api/mcp";
+    const cors = { "Access-Control-Allow-Origin": "*", "Content-Type": "application/json" };
+    const localTools = [
+      {
+        name: "super.health",
+        title: "Super-server health",
+        description: "Read MCP Super-Server health. Does not change state.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      },
+      {
+        name: "super.status",
+        title: "Super-server status",
+        description: "Read MCP Super-Server status (sessions, version).",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      },
+      {
+        name: "super.handoff_director",
+        title: "Handoff to Director",
+        description: "Return the Director MCP URL so a client can call the control plane. Does not execute.",
+        inputSchema: { type: "object", properties: { intent: { type: "string" } }, additionalProperties: false },
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      },
+    ];
+
+    const respond = (id: unknown, result: unknown) => {
+      res.writeHead(200, cors);
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: id ?? null, result }));
+    };
+    const fail = (id: unknown, code: number, message: string) => {
+      res.writeHead(200, cors);
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: id ?? null, error: { code, message } }));
+    };
+
+    const proxyDirector = async (payload: { method?: string; id?: unknown; params?: unknown }) => {
+      const upstream = await fetch(DIRECTOR, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await upstream.text();
+      res.writeHead(upstream.status, cors);
+      res.end(data);
+    };
+
+    if (req.method === "GET") {
+      respond(null, {
+        protocolVersion: "2025-11-25",
+        serverInfo: { name: "mcp-super-server", version: "0.0.1" },
+        capabilities: { tools: { listChanged: false } },
+        director: DIRECTOR,
+      });
+      return;
+    }
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, MCP-Protocol-Version",
+      });
+      res.end();
+      return;
+    }
+    if (req.method !== "POST") {
+      sendError(res, "BAD_REQUEST", requestId);
+      return;
+    }
+    if (!validateContentType(req, ["application/json"])) {
+      sendError(res, "INVALID_CONTENT_TYPE", requestId);
+      return;
+    }
+    let body: Buffer;
+    try {
+      body = await readBody(req, MAX_BODY_SIZE);
+    } catch {
+      sendError(res, "PAYLOAD_TOO_LARGE", requestId);
+      return;
+    }
+    let payload: { jsonrpc?: string; id?: unknown; method?: string; params?: { name?: string; arguments?: Record<string, unknown> } };
+    try {
+      payload = JSON.parse(body.toString());
+    } catch {
+      sendError(res, "BAD_REQUEST", requestId);
+      return;
+    }
+
+    const method = payload.method;
+    if (method === "initialize") {
+      respond(payload.id, {
+        protocolVersion: "2025-11-25",
+        capabilities: { tools: { listChanged: false } },
+        serverInfo: { name: "mcp-super-server", version: "0.0.1" },
+      });
+      return;
+    }
+    if (method === "notifications/initialized" || method === "ping") {
+      respond(payload.id, {});
+      return;
+    }
+    if (method === "tools/list") {
+      let directorTools: unknown[] = [];
+      try {
+        const listed = await fetch(DIRECTOR, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+        });
+        const data = await listed.json() as { result?: { tools?: unknown[] } };
+        directorTools = data.result?.tools ?? [];
+      } catch {
+        directorTools = [];
+      }
+      respond(payload.id, { tools: [...localTools, ...directorTools] });
+      return;
+    }
+    if (method === "tools/call") {
+      const name = payload.params?.name ?? "";
+      if (name === "super.health") {
+        respond(payload.id, { content: [{ type: "text", text: JSON.stringify(await server.health()) }] });
+        return;
+      }
+      if (name === "super.status") {
+        respond(payload.id, { content: [{ type: "text", text: JSON.stringify(server.getStatus()) }] });
+        return;
+      }
+      if (name === "super.handoff_director") {
+        respond(payload.id, {
+          content: [{ type: "text", text: JSON.stringify({
+            peer: "director",
+            mcp: DIRECTOR,
+            execute: false,
+            intent: payload.params?.arguments?.intent ?? null,
+            nextStep: "Call Director at LOVELOGIC_DIRECTOR_MCP. Super-server stays the tool/voice host.",
+          }) }],
+        });
+        return;
+      }
+      if (name.startsWith("director.") || name.startsWith("kanbot.")) {
+        await proxyDirector(payload);
+        return;
+      }
+      fail(payload.id, -32602, `Unknown tool: ${name}`);
+      return;
+    }
+    fail(payload.id, -32601, `Unknown method: ${method ?? ""}`);
+    return;
+  }
+
   // Prometheus metrics endpoint - public for monitoring systems
   if (url.pathname === "/metrics" && req.method === "GET") {
     const timer = new Timer();
@@ -394,12 +546,13 @@ const httpServer = createServer(async (req, res) => {
 
 // ─── Server Startup ────────────────────────────────────────────────────────────
 
-httpServer.listen(PORT, () => {
+const HOST = process.env.HOST || "0.0.0.0";
+httpServer.listen(PORT, HOST, () => {
   console.log(`
 ╔═══════════════════════════════════════════════════════════════╗
 ║           MCP SUPER-SERVER (Hardened)                         ║
 ╠═══════════════════════════════════════════════════════════════╣
-║  Port: ${PORT.toString().padEnd(57)}║
+║  Bind: ${HOST}:${PORT}${" ".repeat(Math.max(1, 52 - HOST.length - PORT.toString().length))}║
 ║  Health: http://localhost:${PORT}/health${" ".repeat(32 - PORT.toString().length)}║
 ║  Auth: ${API_SECRET ? "Enabled (Bearer token)" : "Disabled (no MCP_API_SECRET)".padEnd(48)}║
 ║  CORS: ${(ALLOWED_ORIGINS.length > 0 ? ALLOWED_ORIGINS.join(", ") : "Allow all (dev mode)").padEnd(50)}║
