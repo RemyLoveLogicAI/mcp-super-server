@@ -49,7 +49,18 @@ const ctx = { actor: "claude", surface: "mcp" };
 describe("arcade registry", () => {
   it("hosts every game with core-valid, MCP-safe tool descriptors", () => {
     const a = createDefaultArcade(new MemoryApprovalStore(), url);
-    expect(a.listGames().map(g => `${g.id}:${g.status}`)).toEqual(["continuum:live", "ledgermon:live", "stories:live", "aetheria:scaffold"]);
+    expect(a.listGames().map(g => `${g.id}:${g.status}`)).toEqual([
+      "continuum:live",
+      "ledgermon:live",
+      "stories:live",
+      "aetheria:scaffold",
+      "moa-flappy:scaffold",
+      "remyman:scaffold",
+      "gravity-painter:scaffold",
+      "breakout:scaffold",
+      "super-mcp-adventures:scaffold",
+      "windows95:scaffold",
+    ]);
     for (const t of a.listTools()) {
       expect(() => ToolDescriptor.parse(t.descriptor)).not.toThrow();
       expect(mcpName(t.descriptor.tool_id)).toMatch(/^[a-zA-Z0-9_-]{1,64}$/);
@@ -61,6 +72,14 @@ describe("arcade registry", () => {
   it("rejects tools that are not namespaced to their game", () => {
     const bad = { ...createLedgermonGame(), id: "other" };
     expect(() => new Arcade().register(bad)).toThrow(/namespaced/);
+  });
+  it("reports honest health for discovered filesystem games", async () => {
+    const a = createDefaultArcade(new MemoryApprovalStore(), url);
+    const moa = a.listGames().find(g => g.id === "moa-flappy")!;
+    expect(moa).toBeDefined();
+    const h = await moa.health();
+    expect(h.ok).toBe(true);
+    expect(h.detail).toContain("MoA Game");
   });
 });
 
