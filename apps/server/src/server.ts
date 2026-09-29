@@ -10,6 +10,7 @@ import { createIdentityResolver, type SupportedPlatform } from "@mss/identity";
 import { createContextFabric } from "@mss/context-fabric";
 import { createOrchestrator, type AgentOrchestrator, type ExecutionPlan, type ToolExecutionResult } from "@mss/orchestrator";
 import type { ToolDescriptor } from "@mss/core/resources/tool";
+import type { Arcade } from "@mss/games";
 
 interface PolicyToolGate {
   evaluate(ctx: any): Promise<{ decision: string; reason?: string; policy?: unknown; prompt?: string }>;
@@ -81,6 +82,7 @@ export class MCPSuperServer {
   private orchestrator: AgentOrchestrator;
   private _started = false;
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
+  private arcade: Arcade | null = null;
 
   constructor(config: Partial<MCPServerConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config } as Required<MCPServerConfig>;
@@ -244,9 +246,22 @@ export class MCPSuperServer {
 
   // ─── Tool Gate ──────────────────────────────────────────────────────────────
 
-  registerTool(descriptor: ToolDescriptor): void {
-    this.toolExecutor.registerTool(descriptor.tool_id as string, async (input) => ({}));
+  registerTool(descriptor: ToolDescriptor, handler?: (input: Record<string, unknown>) => Promise<unknown>): void {
+    // Previously every registered tool got a no-op handler. A real handler can now be supplied.
+    this.toolExecutor.registerTool(descriptor.tool_id as string, handler ?? (async () => ({})));
     this.gate.registerTool?.(descriptor);
+  }
+
+  // ─── Games (Arcade) ─────────────────────────────────────────────────────────
+
+  /** Host a games arcade. Its tools are invoked through the arcade, which owns human approval for irreversible acts. */
+  attachArcade(arcade: Arcade): void {
+    this.arcade = arcade;
+    for (const t of arcade.listTools()) this.gate.registerTool?.(t.descriptor);
+  }
+
+  getArcade(): Arcade | null {
+    return this.arcade;
   }
 
   recordToolCall(sessionId: string, toolId: string): void {
@@ -294,6 +309,14 @@ export class MCPSuperServer {
   async invokeTool(sessionId: string, toolId: string, input: Record<string, unknown>) {
     const session = this.sessions.get(sessionId);
     const userId = session?.canonicalUserId ?? "anonymous";
+    if (this.arcade?.findTool(toolId)) {
+      const actor = String(userId).toLowerCase().replace(/[^a-z0-9_.-]/g, "").slice(0, 32) || "anonymous";
+      const r = await this.arcade.invoke(toolId, input, { actor, surface: "http" });
+      await this.ledger.append({ event_type: "ToolCallCompleted", tool_id: r.tool_id, ok: r.decision === "allow" } as any);
+      if (r.decision === "allow") return { decision: "allow" as const, result: r.output };
+      if (r.decision === "require_human") return { decision: "require_human" as const, prompt: r.prompt, approval_id: r.approval.id };
+      return { decision: "deny" as const, reason: r.reason };
+    }
     const descriptor: ToolDescriptor = {
       tool_id: toolId,
       version: "1.0.0",

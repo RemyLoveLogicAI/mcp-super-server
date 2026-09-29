@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# mss — MCP Super-Server arcade CLI. Runs the TypeScript source directly via tsx.
+set -euo pipefail
+DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")")" && pwd)"
+PKG="$DIR/.."
+TSX="$PKG/node_modules/.bin/tsx"
+[ -x "$TSX" ] || TSX="$PKG/../../node_modules/.bin/tsx"
+[ -x "$TSX" ] || TSX="$(command -v tsx || true)"
+[ -n "$TSX" ] || { echo "mss: tsx not found. Run 'pnpm install' in the mcp-super-server repo." >&2; exit 2; }
+exec "$TSX" "$PKG/src/cli.ts" "$@"

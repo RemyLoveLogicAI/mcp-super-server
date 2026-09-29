@@ -18,6 +18,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { MCPSuperServer, createMCPServer } from "./server.js";
+import { createDefaultArcade, FileApprovalStore } from "@mss/games";
 import { createMetricsRegistry, Timer } from "./metrics/index.js";
 
 // ─── Configuration ─────────────────────────────────────────────────────────────
@@ -202,6 +203,7 @@ function generateRequestId(): string {
 // ─── Server Setup ──────────────────────────────────────────────────────────────
 
 const server = createMCPServer();
+server.attachArcade(createDefaultArcade(new FileApprovalStore()));
 
 const httpServer = createServer(async (req, res) => {
   const requestId = generateRequestId();
@@ -297,6 +299,18 @@ const httpServer = createServer(async (req, res) => {
       metrics.inc("http_requests_total", { method: "GET", path: "/status", status: "500" });
       metrics.observe("http_request_duration_seconds", timer.elapsed(), { method: "GET", path: "/status" });
     }
+    return;
+  }
+
+  // Games hosted by the arcade (behind auth like /status)
+  if (url.pathname === "/games" && req.method === "GET") {
+    const arcade = server.getArcade();
+    const games = arcade ? await Promise.all(arcade.listGames().map(async (g) => ({
+      id: g.id, name: g.name, status: g.status, description: g.description, health: await g.health(),
+      tools: g.tools.map((t) => ({ tool_id: t.descriptor.tool_id, side_effect_class: t.descriptor.side_effect_class })),
+    }))) : [];
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ games }));
     return;
   }
 
