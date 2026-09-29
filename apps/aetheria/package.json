@@ -11,6 +11,9 @@
   "dependencies": {
     "@mss/core": "workspace:*",
     "@mss/identity": "workspace:*",
+    "@mss/orchestrator": "workspace:*",
+    "@mss/ledger": "workspace:*",
+    "@mss/games": "workspace:*",
     "@mss/worlds": "workspace:*",
     "@supabase/supabase-js": "^2.100.0"
   },

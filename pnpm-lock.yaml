@@ -30,9 +30,18 @@ importers:
       '@mss/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@mss/games':
+        specifier: workspace:*
+        version: link:../../packages/games
       '@mss/identity':
         specifier: workspace:*
         version: link:../../packages/identity
+      '@mss/ledger':
+        specifier: workspace:*
+        version: link:../../packages/ledger
+      '@mss/orchestrator':
+        specifier: workspace:*
+        version: link:../../packages/orchestrator
       '@mss/worlds':
         specifier: workspace:*
         version: link:../../packages/worlds
