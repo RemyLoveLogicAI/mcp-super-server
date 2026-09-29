@@ -31,3 +31,6 @@ pnpm-debug.log*
 
 # Test
 coverage/
+
+# Loki Mode operational state (working memory, queue, metrics — not source)
+.loki/

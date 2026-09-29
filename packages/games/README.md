@@ -64,3 +64,23 @@ the CLI, MCP, and HTTP surfaces with no other changes.
 npx vitest run --config vitest.config.ts packages/games apps/server   # 20 unit/integration tests
 CONTINUUM_BIN=continuum packages/games/scripts/e2e-continuum.sh      # 13 end-to-end checks against a real daemon
 ```
+
+## Operating the Continuum daemon
+
+`mss continuum ...` and the arcade's `continuum:*` tools are a client of a separate
+Continuum daemon (`python -m continuum serve`) — the daemon is the single writer for the
+world, so every surface (this CLI, MCP, the web shell) sees the same history. On macOS
+it runs as a persistent LaunchAgent, `ai.lovelogic.continuum`, world at
+`~/.continuum/worlds/valley`, port 7777.
+
+```bash
+packages/games/scripts/continuum-daemon.sh install     # load, RunAtLoad + KeepAlive
+packages/games/scripts/continuum-daemon.sh status      # loaded? + a live /api/state probe
+packages/games/scripts/continuum-daemon.sh uninstall   # unload
+```
+
+`KeepAlive` restarts the daemon if it crashes; the world's event-sourced ledger survives
+restarts (verify with `continuum verify --world ~/.continuum/worlds/valley`). Logs land
+in `~/.continuum/daemon.log` / `daemon.err.log`. This daemon binds `127.0.0.1` only —
+Continuum has no auth yet, so it must never be exposed beyond localhost.
+
