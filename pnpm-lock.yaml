@@ -168,6 +168,9 @@ importers:
       '@mss/core':
         specifier: workspace:*
         version: link:../core
+      '@mss/orchestrator':
+        specifier: workspace:*
+        version: link:../orchestrator
       yaml:
         specifier: ^2.5.0
         version: 2.9.1

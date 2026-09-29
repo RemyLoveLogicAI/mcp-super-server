@@ -8,7 +8,7 @@ import { createToolGate, createPermissiveGate, createReadOnlyGate, createWriteAp
 import { createInMemoryLedger } from "@mss/ledger";
 import { createIdentityResolver, type SupportedPlatform } from "@mss/identity";
 import { createContextFabric } from "@mss/context-fabric";
-import { createOrchestrator, type AgentOrchestrator, type ExecutionPlan, type ToolExecutionResult } from "@mss/orchestrator";
+import { createOrchestrator, type AgentOrchestrator, type ExecutionPlan, type RequestedTool, type ToolExecutionResult } from "@mss/orchestrator";
 import type { ToolDescriptor } from "@mss/core/resources/tool";
 import type { Arcade } from "@mss/games";
 
@@ -55,19 +55,31 @@ const DEFAULT_CONFIG: MCPServerConfig = {
 
 class RealToolExecutor implements ToolExecutor {
   private tools = new Map<string, (input: Record<string, unknown>) => Promise<unknown>>();
+  private arcade: Arcade | null = null;
   constructor() {
     this.tools.set("weather", async (i) => ({ city: i.city ?? "Unknown", temp: 72, conditions: "sunny" }));
     this.tools.set("search", async (i) => ({ query: i.query ?? "", results: [`Result 1 for ${i.query}`] }));
     this.tools.set("read:file", async (i) => ({ path: i.path, content: "Mock file content" }));
     this.tools.set("write:file", async (i) => ({ path: i.path, written: true, bytes: String(i.content ?? "").length }));
   }
+  setArcade(arcade: Arcade | null): void { this.arcade = arcade; }
   registerTool(toolId: string, fn: (input: Record<string, unknown>) => Promise<unknown>): void { this.tools.set(toolId, fn); }
   async execute(toolId: string, input: Record<string, unknown>): Promise<ToolExecutionResult> {
     const start = Date.now();
     const handler = this.tools.get(toolId);
-    if (!handler) return { ok: false, error: `Tool ${toolId} not found`, duration_ms: Date.now() - start };
-    try { return { ok: true, output: await handler(input), duration_ms: Date.now() - start }; }
-    catch (e) { return { ok: false, error: String(e), duration_ms: Date.now() - start }; }
+    if (handler) {
+      try { return { ok: true, output: await handler(input), duration_ms: Date.now() - start }; }
+      catch (e) { return { ok: false, error: String(e), duration_ms: Date.now() - start }; }
+    }
+    if (this.arcade?.findTool(toolId)) {
+      const res = await this.arcade.invoke(toolId, input, { actor: "orchestrator", surface: "http" });
+      const duration_ms = Date.now() - start;
+      if (res.decision === "allow") {
+        return { ok: true, output: res.output.data !== undefined ? res.output.data : res.output.text, duration_ms };
+      }
+      return { ok: false, error: res.decision === "require_human" ? `require_human: ${res.prompt}` : res.reason, duration_ms };
+    }
+    return { ok: false, error: `Tool ${toolId} not found`, duration_ms: Date.now() - start };
   }
 }
 
@@ -257,6 +269,7 @@ export class MCPSuperServer {
   /** Host a games arcade. Its tools are invoked through the arcade, which owns human approval for irreversible acts. */
   attachArcade(arcade: Arcade): void {
     this.arcade = arcade;
+    this.toolExecutor.setArcade(arcade);
     for (const t of arcade.listTools()) this.gate.registerTool?.(t.descriptor);
   }
 
@@ -360,7 +373,11 @@ export class MCPSuperServer {
     return { status: "healthy" as const, timestamp: new Date().toISOString(), uptime: 0, checks: { ledger: true, identity: true, orchestrator: true, contextFabric: true }, version: "0.0.1" };
   }
 
-  async planAndExecute(sessionId: string, goal: string, requestedTools: string[]) {
+  async planAndExecute(
+    sessionId: string,
+    goal: string,
+    requestedTools: Array<string | RequestedTool>,
+  ) {
     const plan = await this.orchestrator.createPlan(goal, requestedTools);
     return this.orchestrator.executePlan(plan, (step) => {
       void this.contextFabric.createAndLink("tool", { sessionId, step }, []);

@@ -18,6 +18,7 @@ import { createInterface } from "node:readline/promises";
 import { userInfo } from "node:os";
 import { FileApprovalStore, refresh } from "./approvals.js";
 import { mcpName, type Arcade, type InvokeResult } from "./arcade.js";
+import { conductPlan, formatConductResult } from "./conduct.js";
 import { createDefaultArcade } from "./index.js";
 import { serveMcp } from "./mcp.js";
 
@@ -122,6 +123,21 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       const a = arcade.decide(String(rest[0]), cmd === "approve" ? "approved" : "denied", actor);
       console.log(`${a.id} ${a.status} by ${actor}. ${cmd === "approve" ? "The requester can now call the tool again with approval_id=" + a.id + "." : ""}`);
       return 0;
+    }
+    case "conduct": {
+      const [goal, ...stepArgs] = rest;
+      if (!goal) throw new Error("usage: mss conduct <goal> [--steps '[...]'] [tool1 tool2 ...]");
+      let steps: Array<string | { tool_id: string; input?: Record<string, unknown>; depends_on?: string[]; continue_on_failure?: boolean }> = [];
+      if (flags.steps) {
+        steps = JSON.parse(String(flags.steps)) as typeof steps;
+      } else if (stepArgs.length > 0) {
+        steps = stepArgs;
+      } else {
+        throw new Error("usage: mss conduct <goal> [--steps '[{\"tool_id\":\"...\"}]'] [tool1 tool2 ...]");
+      }
+      const plan = await conductPlan(arcade, goal, steps, { actor, surface: "cli" });
+      console.log(formatConductResult(plan));
+      return plan.status === "completed" ? 0 : 1;
     }
     case "continuum": {
       const [verb, ...args] = rest;

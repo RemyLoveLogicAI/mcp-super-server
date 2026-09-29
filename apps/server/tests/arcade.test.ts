@@ -36,4 +36,23 @@ describe("super-server hosts the arcade", () => {
     const plan: any = await server.planAndExecute("s", "echo", ["echo"]);
     expect(JSON.stringify(plan)).toContain("echoed");
   });
+
+  it("orchestrator can plan and execute steps against attached arcade tools", async () => {
+    const server = createMCPServer({ gateMode: "permissive" });
+    server.attachArcade(new Arcade(new MemoryApprovalStore()).register(createLedgermonGame()));
+    const plan = await server.planAndExecute("s", "Orchestrated Battle", [
+      {
+        tool_id: "ledgermon:battle",
+        input: {
+          a_did: "did:zo:remy-main",
+          a: { spd: 80, sta: 50, acc: 90, tem: 20, app: 40 },
+          b_did: "did:zo:remy-r1",
+          b: { spd: 60, sta: 50, acc: 70, tem: 10, app: 30 },
+        },
+      },
+    ]);
+    expect(plan.status).toBe("completed");
+    expect(plan.steps[0]?.status).toBe("completed");
+    expect((plan.steps[0]?.result as any).winner_did).toBe("did:zo:remy-main");
+  });
 });

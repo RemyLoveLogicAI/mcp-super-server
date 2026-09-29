@@ -184,5 +184,98 @@ describe("Multi-Agent Orchestration", () => {
       expect(result.steps[1]?.status).toBe("failed"); // dep failed, so this fails too
       expect(result.steps[2]?.status).toBe("completed"); // independent, should complete
     });
+    it("should reject self-dependencies during plan creation", async () => {
+      const executor = new RealToolExecutor();
+      const orchestrator = createOrchestrator(
+        { agent_id: "agent-1", default_budget: { max_tool_calls: 10 } },
+        executor,
+      );
+
+      await expect(
+        orchestrator.createPlan("Self dep", [
+          { tool_id: "weather", input: {}, depends_on: ["step-1"] },
+        ]),
+      ).rejects.toThrow("Step step-1 cannot depend on itself");
+    });
+
+    it("should reject nonexistent dependencies during plan creation", async () => {
+      const executor = new RealToolExecutor();
+      const orchestrator = createOrchestrator(
+        { agent_id: "agent-1", default_budget: { max_tool_calls: 10 } },
+        executor,
+      );
+
+      await expect(
+        orchestrator.createPlan("Missing dep", [
+          { tool_id: "weather", input: {}, depends_on: ["step-999"] },
+        ]),
+      ).rejects.toThrow("references nonexistent dependency: step-999");
+    });
+
+    it("should reject circular dependencies during plan creation", async () => {
+      const executor = new RealToolExecutor();
+      const orchestrator = createOrchestrator(
+        { agent_id: "agent-1", default_budget: { max_tool_calls: 10 } },
+        executor,
+      );
+
+      await expect(
+        orchestrator.createPlan("Cycle", [
+          { tool_id: "weather", input: {}, depends_on: ["step-2"] },
+          { tool_id: "search", input: {}, depends_on: ["step-1"] },
+        ]),
+      ).rejects.toThrow(/Circular dependency detected in plan/);
+    });
+
+    it("should interpolate upstream outputs into downstream inputs", async () => {
+      const executor = new RealToolExecutor();
+      const orchestrator = createOrchestrator(
+        { agent_id: "agent-1", default_budget: { max_tool_calls: 10 } },
+        executor,
+      );
+
+      const plan = await orchestrator.createPlan("Chained outputs", [
+        { tool_id: "weather", input: { city: "Tokyo" } }, // step-1 outputs { city: "Tokyo", temp: 72, conditions: "sunny" }
+        { tool_id: "search", input: { query: "Forecast for {{step-1.output.city}} was {{step-1.output.conditions}}" }, depends_on: ["step-1"] }, // step-2
+      ]);
+
+      const result = await orchestrator.executePlan(plan);
+
+      expect(result.status).toBe("completed");
+      expect(result.steps[1]?.status).toBe("completed");
+      expect(result.steps[1]?.result).toEqual({
+        query: "Forecast for Tokyo was sunny",
+        results: [
+          "Result 1 for Forecast for Tokyo was sunny",
+          "Result 2 for Forecast for Tokyo was sunny",
+        ],
+      });
+    });
+
+    it("should execute steps in topological order even if declared out of order", async () => {
+      const order: string[] = [];
+      const executor: RealToolExecutor = new (class extends RealToolExecutor {
+        async execute(tool_id: string, input: Record<string, unknown>) {
+          order.push(tool_id);
+          return super.execute(tool_id, input);
+        }
+      })();
+
+      const orchestrator = createOrchestrator(
+        { agent_id: "agent-1", default_budget: { max_tool_calls: 10 } },
+        executor,
+      );
+
+      // step-1 depends on step-2, so step-2 must execute first
+      const plan = await orchestrator.createPlan("Topological execution", [
+        { tool_id: "search", input: { query: "hi" }, depends_on: ["step-2"] }, // step-1
+        { tool_id: "weather", input: { city: "Paris" } }, // step-2
+      ]);
+
+      const result = await orchestrator.executePlan(plan);
+
+      expect(result.status).toBe("completed");
+      expect(order).toEqual(["weather", "search"]);
+    });
   });
 });

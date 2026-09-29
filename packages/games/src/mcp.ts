@@ -10,6 +10,7 @@
 import { createInterface } from "node:readline";
 import { mcpName, type Arcade } from "./arcade.js";
 import { refresh } from "./approvals.js";
+import { conductPlan, formatConductResult, type ConductStepInput } from "./conduct.js";
 
 const PROTOCOL = "2025-06-18";
 
@@ -32,6 +33,41 @@ export function toolList(arcade: Arcade) {
       inputSchema: { type: "object", properties: {} }, annotations: { readOnlyHint: true } },
     { name: "arcade_approval_status", title: "Approval status", description: "Check whether a human has approved a pending irreversible action.",
       inputSchema: { type: "object", properties: { approval_id: { type: "string" } }, required: ["approval_id"] }, annotations: { readOnlyHint: true } },
+    {
+      name: "orchestrator_conduct",
+      title: "Conduct Orchestrated Plan",
+      description: "Orchestrate and conduct a multi-step plan across arcade tools and games with dependency resolution, budget enforcement, and data chaining.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          goal: { type: "string", description: "The overarching goal of the orchestration plan." },
+          steps: {
+            type: "array",
+            description: "Ordered or DAG-linked steps to execute.",
+            items: {
+              type: "object",
+              properties: {
+                tool_id: { type: "string", description: "Tool to invoke (e.g. continuum:status, ledgermon:battle)." },
+                input: { type: "object", description: "Input arguments. Supports {{step-1.output.field}} template interpolation." },
+                depends_on: { type: "array", items: { type: "string" }, description: "Optional list of step IDs this step depends on." },
+                continue_on_failure: { type: "boolean", description: "Whether to continue subsequent steps if this step fails." },
+              },
+              required: ["tool_id"],
+            },
+          },
+          max_tool_calls: { type: "number", description: "Maximum allowed tool executions (default 10)." },
+          max_time_ms: { type: "number", description: "Execution timeout in milliseconds." },
+        },
+        required: ["goal", "steps"],
+      },
+      annotations: {
+        title: "Conduct Orchestrated Plan",
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
     ...gameTools,
   ];
 }
@@ -48,6 +84,34 @@ export async function callTool(arcade: Arcade, name: string, args: Record<string
   if (name === "arcade_approval_status") {
     const a = arcade.approvals.get(String(args.approval_id));
     return a ? text(`${a.id}: ${refresh(a).status} · ${a.summary}`) : text(`no approval ${args.approval_id}`, true);
+  }
+  if (name === "orchestrator_conduct") {
+    const goal = typeof args.goal === "string" ? args.goal : "";
+    const rawSteps = Array.isArray(args.steps) ? args.steps : [];
+    const steps: Array<string | ConductStepInput> = rawSteps.map((s) => {
+      if (typeof s === "string") return s;
+      const step = s as Record<string, unknown>;
+      return {
+        tool_id: String(step.tool_id ?? ""),
+        input: (step.input ?? {}) as Record<string, unknown>,
+        depends_on: Array.isArray(step.depends_on) ? (step.depends_on as string[]) : undefined,
+        continue_on_failure: Boolean(step.continue_on_failure),
+      };
+    });
+    const maxCalls = typeof args.max_tool_calls === "number" ? args.max_tool_calls : undefined;
+    const maxTime = typeof args.max_time_ms === "number" ? args.max_time_ms : undefined;
+    try {
+      const plan = await conductPlan(arcade, goal, steps, {
+        actor,
+        surface: "mcp",
+        max_tool_calls: maxCalls,
+        max_time_ms: maxTime,
+      });
+      const formatted = formatConductResult(plan);
+      return text(formatted, plan.status !== "completed");
+    } catch (e) {
+      return text(`Orchestration error: ${(e as Error).message}`, true);
+    }
   }
   const r = await arcade.invoke(name, args, { actor, surface: "mcp" });
   if (r.decision === "allow") return text(r.output.text);

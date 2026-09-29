@@ -17,6 +17,13 @@ export {
   createSuperMcpAdventuresGame,
   createWindows95Game,
 } from "./discovered.js";
+export {
+  ArcadeToolExecutor,
+  conductPlan,
+  formatConductResult,
+  type ConductStepInput,
+  type ConductOptions,
+} from "./conduct.js";
 
 import { type ApprovalStore } from "./approvals.js";
 import { Arcade } from "./arcade.js";

@@ -44,6 +44,13 @@ export interface ToolExecutionResult {
   error?: string;
   duration_ms?: number;
 }
+export interface RequestedTool {
+  tool_id: string;
+  input?: Record<string, unknown> | undefined;
+  depends_on?: string[] | undefined;
+  continue_on_failure?: boolean | undefined;
+}
+
 
 export interface ToolExecutor {
   execute(tool_id: string, input: Record<string, unknown>): Promise<ToolExecutionResult>;
@@ -60,12 +67,125 @@ export type OrchestratorLogger = (event: {
   data?: Record<string, unknown>;
 }) => void;
 
-function now() {
-  return new Date().toISOString();
+function validatePlanDAG(steps: PlanStep[]): void {
+  const stepIds = new Set(steps.map((s) => s.step_id));
+  for (const step of steps) {
+    for (const dep of step.depends_on ?? []) {
+      if (dep === step.step_id) {
+        throw new Error(`Step ${step.step_id} cannot depend on itself`);
+      }
+      if (!stepIds.has(dep)) {
+        throw new Error(`Step ${step.step_id} references nonexistent dependency: ${dep}`);
+      }
+    }
+  }
+
+  // Cycle detection via DFS
+  const visited = new Map<string, "visiting" | "visited">();
+  const graph = new Map<string, string[]>();
+  for (const step of steps) {
+    graph.set(step.step_id, step.depends_on ?? []);
+  }
+
+  function dfs(node: string, path: string[]): void {
+    visited.set(node, "visiting");
+    path.push(node);
+    for (const dep of graph.get(node) ?? []) {
+      const state = visited.get(dep);
+      if (state === "visiting") {
+        const cycle = [...path.slice(path.indexOf(dep)), dep];
+        throw new Error(`Circular dependency detected in plan: ${cycle.join(" -> ")}`);
+      }
+      if (!state) {
+        dfs(dep, path);
+      }
+    }
+    path.pop();
+    visited.set(node, "visited");
+  }
+
+  for (const step of steps) {
+    if (!visited.has(step.step_id)) {
+      dfs(step.step_id, []);
+    }
+  }
+}
+
+function sortStepsTopologically(steps: PlanStep[]): PlanStep[] {
+  const inDegree = new Map<string, number>();
+  const dependents = new Map<string, string[]>();
+  const stepMap = new Map<string, PlanStep>();
+
+  for (const s of steps) {
+    stepMap.set(s.step_id, s);
+    inDegree.set(s.step_id, (s.depends_on ?? []).length);
+    for (const dep of s.depends_on ?? []) {
+      if (!dependents.has(dep)) dependents.set(dep, []);
+      dependents.get(dep)!.push(s.step_id);
+    }
+  }
+
+  const queue: string[] = [];
+  for (const [id, deg] of inDegree.entries()) {
+    if (deg === 0) queue.push(id);
+  }
+
+  const sorted: PlanStep[] = [];
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    sorted.push(stepMap.get(id)!);
+    for (const nextId of dependents.get(id) ?? []) {
+      const newDeg = inDegree.get(nextId)! - 1;
+      inDegree.set(nextId, newDeg);
+      if (newDeg === 0) queue.push(nextId);
+    }
+  }
+
+  return sorted.length === steps.length ? sorted : steps;
+}
+
+function getNestedValue(obj: unknown, path: string): unknown {
+  if (obj === null || obj === undefined) return undefined;
+  if (!path) return obj;
+  const parts = path.split(".");
+  let cur: unknown = obj;
+  for (const part of parts) {
+    if (cur === null || cur === undefined || typeof cur !== "object") return undefined;
+    cur = (cur as Record<string, unknown>)[part];
+  }
+  return cur;
+}
+
+function interpolateValue(val: unknown, outputs: Map<string, unknown>): unknown {
+  if (typeof val === "string") {
+    const exactMatch = val.match(/^\{\{([a-zA-Z0-9_-]+)\.(?:output|result)(?:\.([^}]+))?\}\}$/);
+    if (exactMatch && exactMatch[1]) {
+      const stepId = exactMatch[1];
+      const propPath = exactMatch[2];
+      const output = outputs.get(stepId);
+      return propPath ? getNestedValue(output, propPath) : output;
+    }
+    return val.replace(/\{\{([a-zA-Z0-9_-]+)\.(?:output|result)(?:\.([^}]+))?\}\}/g, (_, stepId: string, propPath?: string) => {
+      const output = outputs.get(stepId);
+      const res = propPath ? getNestedValue(output, propPath) : output;
+      return res !== undefined && res !== null ? (typeof res === "object" ? JSON.stringify(res) : String(res)) : "";
+    });
+  }
+  if (Array.isArray(val)) {
+    return val.map((item) => interpolateValue(item, outputs));
+  }
+  if (val !== null && typeof val === "object") {
+    const res: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
+      res[k] = interpolateValue(v, outputs);
+    }
+    return res;
+  }
+  return val;
 }
 
 function normalizeRequestedTools(
-  requestedTools: Array<string | { tool_id: string; input?: Record<string, unknown>; depends_on?: string[]; continue_on_failure?: boolean }>,
+  requestedTools: Array<string | RequestedTool>,
 ): PlanStep[] {
   return requestedTools.map((tool, index) => {
     if (typeof tool === "string") {
@@ -109,7 +229,7 @@ export class AgentOrchestrator {
 
   async createPlan(
     goal: string,
-    requestedTools: Array<string | { tool_id: string; input?: Record<string, unknown>; depends_on?: string[]; continue_on_failure?: boolean }>,
+    requestedTools: Array<string | RequestedTool>,
   ): Promise<ExecutionPlan> {
     if (!goal.trim()) throw new Error("Goal cannot be empty");
     if (!requestedTools.length) throw new Error("At least one tool is required to create a plan");
@@ -117,14 +237,17 @@ export class AgentOrchestrator {
       throw new Error(`Requested tool count exceeds budget: ${requestedTools.length} > ${this.config.default_budget.max_tool_calls}`);
     }
 
+    const steps = normalizeRequestedTools(requestedTools);
+    validatePlanDAG(steps);
+
     const plan: ExecutionPlan = {
       plan_id: crypto.randomUUID(),
       agent_id: this.config.agent_id,
       goal: goal.trim(),
-      steps: normalizeRequestedTools(requestedTools),
+      steps,
       budget: { ...this.config.default_budget },
       status: "pending",
-      created_at: now(),
+      created_at: new Date().toISOString(),
     };
 
     this.plans.set(plan.plan_id, plan);
@@ -140,10 +263,12 @@ export class AgentOrchestrator {
     const startedAt = Date.now();
     let calls = 0;
     const completedSteps = new Set<string>();
+    const completedOutputs = new Map<string, unknown>();
     plan.status = "executing";
     this.logger?.({ type: "plan_started", plan_id: plan.plan_id, message: "Plan execution started" });
 
-    for (const step of plan.steps) {
+    const executionOrder = sortStepsTopologically(plan.steps);
+    for (const step of executionOrder) {
       const currentStatus = plan.status as PlanStatus;
       if (currentStatus === "cancelled") break;
       if (calls >= plan.budget.max_tool_calls) {
@@ -171,13 +296,15 @@ export class AgentOrchestrator {
       step.status = "executing";
       this.logger?.({ type: "step_started", plan_id: plan.plan_id, step_id: step.step_id, tool_id: step.tool_id, message: `Executing ${step.tool_id}` });
 
-      const result = await this.toolExecutor.execute(step.tool_id, step.input);
+      const resolvedInput = (interpolateValue(step.input, completedOutputs) ?? {}) as Record<string, unknown>;
+      const result = await this.toolExecutor.execute(step.tool_id, resolvedInput);
       calls += 1;
 
       if (result.ok) {
         step.status = "completed";
         step.result = result.output;
         completedSteps.add(step.step_id);
+        completedOutputs.set(step.step_id, result.output);
         onStepComplete?.(step);
         this.logger?.({ type: "step_completed", plan_id: plan.plan_id, step_id: step.step_id, tool_id: step.tool_id, message: `Completed ${step.tool_id}`, data: { duration_ms: result.duration_ms } });
       } else {
@@ -200,7 +327,7 @@ export class AgentOrchestrator {
       const allDone = plan.steps.every((step) => step.status === "completed" || step.status === "skipped");
       plan.status = allDone ? "completed" : "failed";
       if (plan.status === "completed") {
-        plan.completed_at = now();
+        plan.completed_at = new Date().toISOString();
         this.logger?.({ type: "plan_completed", plan_id: plan.plan_id, message: "Plan completed", data: { duration_ms: Date.now() - startedAt } });
       }
     }
@@ -213,7 +340,7 @@ export class AgentOrchestrator {
     const plan = this.plans.get(plan_id);
     if (!plan) throw new Error(`Plan ${plan_id} not found`);
     plan.status = "cancelled";
-    plan.completed_at = now();
+    plan.completed_at = new Date().toISOString();
     this.plans.set(plan_id, plan);
     this.logger?.({ type: "plan_failed", plan_id, message: "Plan cancelled" });
     return plan;

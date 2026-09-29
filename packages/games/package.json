@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@mss/core": "workspace:*",
+    "@mss/orchestrator": "workspace:*",
     "yaml": "^2.5.0"
   },
   "devDependencies": {

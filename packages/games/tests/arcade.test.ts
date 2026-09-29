@@ -157,9 +157,62 @@ describe("irreversible gate", () => {
 describe("MCP surface", () => {
   it("lists arcade meta tools plus every game tool, with honest annotations", () => {
     const tools = toolList(createDefaultArcade(new MemoryApprovalStore(), url));
-    expect(tools.map(t => t.name)).toEqual(expect.arrayContaining(["arcade_games", "continuum_commit", "ledgermon_battle"]));
+    expect(tools.map(t => t.name)).toEqual(
+      expect.arrayContaining(["arcade_games", "arcade_approval_status", "orchestrator_conduct", "continuum_commit", "ledgermon_battle"])
+    );
     expect(tools.find(t => t.name === "continuum_commit")!.annotations).toMatchObject({ destructiveHint: true, readOnlyHint: false });
+    expect(tools.find(t => t.name === "orchestrator_conduct")!.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false });
     expect(tools.some(t => /approve/.test(t.name) && t.name !== "arcade_approval_status")).toBe(false);   // no self-approval tool
+  });
+
+  it("conducts multi-step orchestrated plans through the MCP tool surface", async () => {
+    const a = createDefaultArcade(new MemoryApprovalStore(), url);
+    const res = await callTool(
+      a,
+      "orchestrator_conduct",
+      {
+        goal: "Check the valley and run a familiar tournament battle",
+        steps: [
+          { tool_id: "continuum:status", input: {} },
+          {
+            tool_id: "ledgermon:battle",
+            input: {
+              a_did: "did:zo:remy-main",
+              a: { spd: 80, sta: 50, acc: 90, tem: 20, app: 40 },
+              b_did: "did:zo:remy-r1",
+              b: { spd: 60, sta: 50, acc: 70, tem: 10, app: 30 },
+            },
+            depends_on: ["step-1"],
+          },
+        ],
+      },
+      "claude-agent",
+    );
+
+    expect(res.isError).toBe(false);
+    expect(res.content[0]!.text).toContain("Orchestration Plan");
+    expect(res.content[0]!.text).toContain("continuum:status · completed");
+    expect(res.content[0]!.text).toContain("ledgermon:battle · completed");
+    expect(res.content[0]!.text).toContain("2/2 steps completed successfully");
+  });
+
+  it("rejects circular dependency plans gracefully over MCP", async () => {
+    const a = createDefaultArcade(new MemoryApprovalStore(), url);
+    const res = await callTool(
+      a,
+      "orchestrator_conduct",
+      {
+        goal: "Impossible circular plan",
+        steps: [
+          { tool_id: "continuum:status", depends_on: ["step-2"] },
+          { tool_id: "continuum:status", depends_on: ["step-1"] },
+        ],
+      },
+      "claude-agent",
+    );
+
+    expect(res.isError).toBe(true);
+    expect(res.content[0]!.text).toMatch(/Circular dependency/);
   });
 });
 
