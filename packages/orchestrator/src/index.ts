@@ -35,6 +35,7 @@ export type {
   ToolExecutionResult,
   OrchestratorLogger,
   StepCallback,
+  RequestedTool,
 } from "./orchestrator.js";
 
 export { RealToolExecutor } from "./tool_executor.js";

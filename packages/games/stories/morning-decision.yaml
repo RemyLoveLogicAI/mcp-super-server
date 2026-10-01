@@ -1,0 +1,892 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# THE MORNING DECISION
+# A context-aware CYOA game that adapts to your real day
+# ═══════════════════════════════════════════════════════════════════════════
+
+id: morning-decision-v1
+version: "1.0.0"
+title: "The Morning Decision"
+description: >
+  Wake up and face the day ahead. But this isn't just any day—
+  it's YOUR day, with YOUR schedule, YOUR weather, YOUR life.
+  Every choice shapes how you'll feel when the sun sets.
+author: "LoveLogicAI"
+
+# What context can this game access?
+contextPermissions:
+  calendar: true
+  weather: true
+  notes: false
+
+# Where does the story begin?
+startScene: wake_up
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SCENES
+# ═══════════════════════════════════════════════════════════════════════════
+
+scenes:
+  # ─────────────────────────────────────────────────────────────────────────
+  # ACT 1: WAKING UP
+  # ─────────────────────────────────────────────────────────────────────────
+  
+  wake_up:
+    id: wake_up
+    title: "The First Light"
+    narrative: >
+      Your eyes flutter open. {{weather_description}}
+      
+      The clock reads 7:15 AM. You have a moment of peace before 
+      the day truly begins.
+      
+      {{calendar_preview}}
+      
+      How do you want to start this day?
+    
+    contextQuery:
+      - contextType: weather
+        query: "current conditions"
+        targetVariable: weather_description
+        transform: summarize
+        fallbackValue: "Gray light filters through your window—another day awaits."
+      
+      - contextType: calendar
+        query: "today's first 3 events"
+        targetVariable: calendar_preview
+        transform: summarize
+        fallbackValue: "Your schedule stretches ahead, full of possibility."
+    
+    choices:
+      - id: energetic
+        text: "Jump out of bed with energy—today is going to be great!"
+        targetScene: morning_energetic
+        effects:
+          - type: set
+            variable: morning_mood
+            value: energetic
+          - type: set
+            variable: energy
+            value: 80
+      
+      - id: slow
+        text: "Take it slow. Stretch. Breathe. No rush."
+        targetScene: morning_slow
+        effects:
+          - type: set
+            variable: morning_mood
+            value: peaceful
+          - type: set
+            variable: energy
+            value: 60
+      
+      - id: snooze
+        text: "Hit snooze. Just five more minutes..."
+        targetScene: morning_snooze
+        effects:
+          - type: set
+            variable: morning_mood
+            value: groggy
+          - type: set
+            variable: energy
+            value: 40
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # BRANCH: ENERGETIC MORNING
+  # ─────────────────────────────────────────────────────────────────────────
+  
+  morning_energetic:
+    id: morning_energetic
+    title: "Seizing the Day"
+    narrative: >
+      You spring out of bed, feet hitting the floor with purpose.
+      Energy courses through you—today feels different. Today feels like
+      a day where things happen.
+      
+      The kitchen beckons. What's for breakfast?
+    
+    choices:
+      - id: healthy_breakfast
+        text: "Something healthy—fuel for the day ahead"
+        targetScene: breakfast_healthy
+        effects:
+          - type: increment
+            variable: energy
+            value: 10
+      
+      - id: quick_breakfast
+        text: "Just coffee—you've got things to do"
+        targetScene: breakfast_quick
+        effects:
+          - type: decrement
+            variable: energy
+            value: 5
+      
+      - id: indulgent_breakfast
+        text: "Treat yourself—pancakes, bacon, the works"
+        targetScene: breakfast_indulgent
+        effects:
+          - type: set
+            variable: treated_self
+            value: true
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # BRANCH: SLOW MORNING
+  # ─────────────────────────────────────────────────────────────────────────
+  
+  morning_slow:
+    id: morning_slow
+    title: "Mindful Moments"
+    narrative: >
+      You stretch slowly, feeling each muscle wake up in turn.
+      There's a certain peace in not rushing—in letting the morning
+      unfold at its own pace.
+      
+      {{weather_check}}
+      
+      The day will come whether you hurry or not. How do you want
+      to spend these precious quiet moments?
+    
+    contextQuery:
+      - contextType: weather
+        query: "should I go outside"
+        targetVariable: weather_check
+        transform: summarize
+        fallbackValue: "Through the window, the world waits patiently."
+    
+    choices:
+      - id: meditate
+        text: "Take a few minutes to meditate"
+        targetScene: morning_meditation
+        effects:
+          - type: set
+            variable: meditated
+            value: true
+          - type: increment
+            variable: energy
+            value: 15
+      
+      - id: journal
+        text: "Write in your journal"
+        targetScene: morning_journal
+        effects:
+          - type: set
+            variable: journaled
+            value: true
+      
+      - id: window
+        text: "Just sit by the window and watch the world"
+        targetScene: morning_window
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # BRANCH: SNOOZE
+  # ─────────────────────────────────────────────────────────────────────────
+  
+  morning_snooze:
+    id: morning_snooze
+    title: "Five More Minutes"
+    narrative: >
+      The alarm falls silent. The warmth of the blankets pulls you back
+      toward dreams. Just five more minutes...
+      
+      When you open your eyes again, it's 7:45 AM.
+      
+      {{calendar_urgency}}
+      
+      The day isn't waiting anymore.
+    
+    contextQuery:
+      - contextType: calendar
+        query: "first meeting time"
+        targetVariable: calendar_urgency
+        transform: verbatim
+        fallbackValue: "Time seems to have slipped away while you slept."
+    
+    choices:
+      - id: panic
+        text: "Panic! Rush through everything!"
+        targetScene: morning_rush
+        effects:
+          - type: set
+            variable: morning_mood
+            value: stressed
+          - type: decrement
+            variable: energy
+            value: 20
+      
+      - id: accept
+        text: "Accept it. Move efficiently but calmly."
+        targetScene: morning_efficient
+        effects:
+          - type: set
+            variable: morning_mood
+            value: focused
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # BREAKFAST SCENES
+  # ─────────────────────────────────────────────────────────────────────────
+  
+  breakfast_healthy:
+    id: breakfast_healthy
+    title: "Fuel for the Journey"
+    narrative: >
+      You prepare something nourishing—fresh fruit, whole grains,
+      maybe some eggs. As you eat, you feel your body thanking you.
+      
+      The morning stretches out before you. What comes next?
+    
+    choices:
+      - id: leave_early
+        text: "Head out early—get a jump on the day"
+        targetScene: departure_early
+      
+      - id: prepare
+        text: "Take time to prepare and review your schedule"
+        targetScene: morning_preparation
+
+  breakfast_quick:
+    id: breakfast_quick
+    title: "Liquid Motivation"
+    narrative: >
+      Coffee. Hot, dark, essential. It scalds your tongue a little
+      but you don't care. The caffeine begins its familiar dance
+      through your veins.
+      
+      Your mind is already racing ahead. What's the priority?
+    
+    choices:
+      - id: work_focus
+        text: "Get straight to work—there's a lot to do"
+        targetScene: departure_focused
+      
+      - id: social_check
+        text: "Check your messages first—stay connected"
+        targetScene: morning_social
+
+  breakfast_indulgent:
+    id: breakfast_indulgent
+    title: "A Small Celebration"
+    narrative: >
+      Some mornings call for pancakes. For the sizzle of bacon.
+      For maple syrup pooling in golden puddles.
+      
+      You eat slowly, savoring each bite. Life is short—
+      might as well enjoy the small pleasures.
+      
+      Feeling satisfied, you consider your next move.
+    
+    choices:
+      - id: gratitude
+        text: "Carry this feeling of gratitude into the day"
+        targetScene: departure_grateful
+        effects:
+          - type: set
+            variable: grateful
+            value: true
+      
+      - id: guilt
+        text: "Feel a twinge of guilt—should've been healthier"
+        targetScene: departure_guilty
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # MEDITATION / JOURNAL / WINDOW
+  # ─────────────────────────────────────────────────────────────────────────
+  
+  morning_meditation:
+    id: morning_meditation
+    title: "Inner Stillness"
+    narrative: >
+      You find a comfortable position and close your eyes.
+      Breath in. Breath out. The chatter of your mind slowly quiets.
+      
+      For a few precious minutes, you simply exist.
+      
+      When you open your eyes, the world seems a little clearer.
+    
+    choices:
+      - id: continue_peace
+        text: "Maintain this peace as you begin your day"
+        targetScene: departure_peaceful
+      
+      - id: energize
+        text: "Use this clarity to energize yourself"
+        targetScene: departure_energized
+
+  morning_journal:
+    id: morning_journal
+    title: "Words on Paper"
+    narrative: >
+      Your pen moves across the page. Thoughts become words.
+      Words become understanding.
+      
+      You write about yesterday. About today. About what you hope for.
+      
+      When you finish, you feel lighter somehow.
+    
+    choices:
+      - id: set_intention
+        text: "Set a clear intention for today"
+        targetScene: departure_intentional
+        effects:
+          - type: set
+            variable: has_intention
+            value: true
+      
+      - id: close_book
+        text: "Close the journal and let the day unfold naturally"
+        targetScene: departure_open
+
+  morning_window:
+    id: morning_window
+    title: "The View"
+    narrative: >
+      {{weather_detail}}
+      
+      People pass by below. Cars. Birds. The endless dance of life
+      continuing whether you watch or not.
+      
+      There's something humbling about it. Something peaceful.
+    
+    contextQuery:
+      - contextType: weather
+        query: "detailed conditions"
+        targetVariable: weather_detail
+        transform: verbatim
+        fallbackValue: "The sky holds its secrets. The world moves at its own pace."
+    
+    choices:
+      - id: join_world
+        text: "Time to join that dance"
+        targetScene: departure_connected
+      
+      - id: observe_more
+        text: "Stay a moment longer—this peace is rare"
+        targetScene: departure_contemplative
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # RUSH / EFFICIENT
+  # ─────────────────────────────────────────────────────────────────────────
+  
+  morning_rush:
+    id: morning_rush
+    title: "Chaos Mode"
+    narrative: >
+      Everything becomes a blur. Shower. Clothes. Keys. Phone.
+      You stub your toe. You can't find your other shoe.
+      
+      But somehow, impossibly, you make it out the door.
+      Heart pounding. Mind racing.
+      
+      The day has begun—whether you're ready or not.
+    
+    choices:
+      - id: continue_rushed
+        text: "Keep this energy going—you'll catch up"
+        targetScene: ending_rushed
+      
+      - id: reset
+        text: "Stop. Breathe. Reset your mindset."
+        targetScene: ending_reset
+
+  morning_efficient:
+    id: morning_efficient
+    title: "Controlled Calm"
+    narrative: >
+      Late doesn't have to mean frantic. You move with purpose,
+      making each action count. Shower: quick but thorough.
+      Outfit: already planned. Breakfast: portable.
+      
+      You're out the door five minutes later than ideal,
+      but with your dignity intact.
+    
+    choices:
+      - id: proud
+        text: "Feel proud of how you handled that"
+        targetScene: ending_efficient_proud
+      
+      - id: learn
+        text: "Note to self: set an earlier alarm"
+        targetScene: ending_efficient_learn
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # DEPARTURE SCENES → ENDINGS
+  # ─────────────────────────────────────────────────────────────────────────
+  
+  departure_early:
+    id: departure_early
+    title: "The Early Bird"
+    narrative: >
+      The streets are quieter at this hour. You have time to notice
+      things you usually miss—the way light falls on buildings,
+      the morning rituals of strangers.
+      
+      {{first_event}}
+      
+      You arrive early. Ready. Capable.
+      
+      This is how today begins.
+    
+    contextQuery:
+      - contextType: calendar
+        query: "first event details"
+        targetVariable: first_event
+        transform: summarize
+        fallbackValue: "Your first commitment of the day awaits."
+    
+    choices:
+      - id: embrace
+        text: "Embrace this feeling of being ahead"
+        targetScene: ending_ahead
+
+  departure_peaceful:
+    id: departure_peaceful
+    title: "Carrying Peace"
+    narrative: >
+      You step outside, but the calm follows you. The meditation
+      wasn't just for those few minutes—it was preparation for
+      everything that comes after.
+      
+      {{weather_final}}
+      
+      Whatever today brings, you're ready to meet it with equanimity.
+    
+    contextQuery:
+      - contextType: weather
+        query: "current"
+        targetVariable: weather_final
+        transform: verbatim
+        fallbackValue: "The air greets you with its morning promise."
+    
+    choices:
+      - id: maintain
+        text: "Let this peace carry you through the day"
+        targetScene: ending_peaceful
+
+  departure_grateful:
+    id: departure_grateful
+    title: "Grateful Steps"
+    narrative: >
+      The taste of breakfast still lingers. The warmth of that
+      small indulgence stays with you. Sometimes you need to 
+      remind yourself that life isn't just about productivity—
+      it's about moments like these.
+      
+      You step into the day with a smile.
+    
+    choices:
+      - id: share
+        text: "Look for ways to share this feeling with others"
+        targetScene: ending_grateful
+
+  departure_intentional:
+    id: departure_intentional
+    title: "Purpose in Motion"
+    narrative: >
+      Your intention is set. Written down. Real.
+      
+      Today isn't just another day—it's a day with direction.
+      Every step you take moves you toward something meaningful.
+      
+      The world doesn't know your intention, but you do.
+      And that's what matters.
+    
+    choices:
+      - id: commit
+        text: "Commit fully to this intention"
+        targetScene: ending_intentional
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # ADDITIONAL DEPARTURE SCENES
+  # ─────────────────────────────────────────────────────────────────────────
+
+  departure_focused:
+    id: departure_focused
+    title: "Laser Focus"
+    narrative: >
+      Coffee courses through your system. Your mind is sharp,
+      already solving problems that haven't happened yet.
+      
+      Today is about getting things done.
+    
+    choices:
+      - id: execute
+        text: "Execute. No distractions."
+        targetScene: ending_focused
+
+  departure_energized:
+    id: departure_energized
+    title: "Vital Force"
+    narrative: >
+      You feel alive. Really alive. The meditation gave you
+      clarity, and now that clarity has become energy.
+      
+      The world better watch out.
+    
+    choices:
+      - id: channel
+        text: "Channel this energy into meaningful action"
+        targetScene: ending_energized
+
+  departure_open:
+    id: departure_open
+    title: "Open Possibilities"
+    narrative: >
+      No rigid plans. No strict intentions. Just openness
+      to whatever the day might bring.
+      
+      Sometimes the best adventures are the unplanned ones.
+    
+    choices:
+      - id: flow
+        text: "Flow with whatever comes"
+        targetScene: ending_open
+
+  departure_connected:
+    id: departure_connected
+    title: "Part of Something Bigger"
+    narrative: >
+      Watching the world reminded you that you're part of it.
+      Not separate. Not alone. Connected to every person you'll
+      meet today, every life that crosses yours.
+      
+      You step outside ready to be part of the dance.
+    
+    choices:
+      - id: engage
+        text: "Engage fully with the people you meet"
+        targetScene: ending_connected
+
+  departure_contemplative:
+    id: departure_contemplative
+    title: "Thoughtful Departure"
+    narrative: >
+      You held onto that peace a little longer than practical.
+      Maybe you'll be a few minutes behind schedule.
+      
+      But some things are worth being late for.
+    
+    choices:
+      - id: accept
+        text: "Accept the trade-off with grace"
+        targetScene: ending_contemplative
+
+  morning_preparation:
+    id: morning_preparation
+    title: "Ready for Anything"
+    narrative: >
+      You review your schedule. Check your bag. Make sure
+      you have everything you need.
+      
+      {{calendar_full}}
+      
+      Preparation is its own kind of meditation.
+    
+    contextQuery:
+      - contextType: calendar
+        query: "full day overview"
+        targetVariable: calendar_full
+        transform: summarize
+        fallbackValue: "Your day takes shape in your mind."
+    
+    choices:
+      - id: prepared
+        text: "Step out feeling fully prepared"
+        targetScene: ending_prepared
+
+  morning_social:
+    id: morning_social
+    title: "Connected Morning"
+    narrative: >
+      You scroll through messages. Memes from friends.
+      Updates from family. The constant hum of digital connection.
+      
+      It's not always deep, but it's nice to feel remembered.
+    
+    choices:
+      - id: respond
+        text: "Send some love back before starting your day"
+        targetScene: ending_social
+
+  departure_guilty:
+    id: departure_guilty
+    title: "Lingering Doubt"
+    narrative: >
+      The pancakes were delicious, but now you wonder if you
+      should have made a healthier choice. The guilt sits
+      heavy, mixing with the satisfaction.
+      
+      Maybe you can make up for it later.
+    
+    choices:
+      - id: release
+        text: "Release the guilt—what's done is done"
+        targetScene: ending_released
+      
+      - id: compensate
+        text: "Plan to compensate with a healthy lunch"
+        targetScene: ending_compensating
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ENDINGS
+# ═══════════════════════════════════════════════════════════════════════════
+
+endings:
+  ending_ahead:
+    id: ending_ahead
+    title: "The Head Start"
+    type: good
+    narrative: >
+      You began this day ahead of the curve. Whatever challenges
+      come, you'll face them with time on your side.
+      
+      This is how good days are built—one small choice at a time.
+      
+      THE END
+      
+      You started the day: ENERGETIC
+      Morning mood: AHEAD OF SCHEDULE
+
+  ending_peaceful:
+    id: ending_peaceful
+    title: "Inner Peace"
+    type: good
+    narrative: >
+      The chaos of the world swirls around you, but inside
+      there is stillness. Today, you carry something precious—
+      a quiet mind in a noisy world.
+      
+      THE END
+      
+      You started the day: MINDFULLY
+      Morning mood: AT PEACE
+
+  ending_grateful:
+    id: ending_grateful
+    title: "Gratitude"
+    type: good
+    narrative: >
+      Today begins with appreciation. For small pleasures.
+      For the luxury of choice. For another day of possibility.
+      
+      Gratitude doesn't change the world—but it changes how
+      you see it.
+      
+      THE END
+      
+      You started the day: GRATEFULLY
+      Morning mood: APPRECIATIVE
+
+  ending_intentional:
+    id: ending_intentional
+    title: "Purpose-Driven"
+    type: good
+    narrative: >
+      You know exactly what you want from today. That clarity
+      is rare. That focus is powerful.
+      
+      Not every day needs an intention—but the ones that do
+      tend to be the ones we remember.
+      
+      THE END
+      
+      You started the day: WITH INTENTION
+      Morning mood: FOCUSED
+
+  ending_rushed:
+    id: ending_rushed
+    title: "The Scramble"
+    type: neutral
+    narrative: >
+      The day began in chaos, and chaos has momentum.
+      You're moving fast, reacting instead of planning.
+      
+      It's not ideal—but sometimes we make our best moves
+      when we have no time to second-guess ourselves.
+      
+      THE END
+      
+      You started the day: RUSHING
+      Morning mood: FRANTIC
+
+  ending_reset:
+    id: ending_reset
+    title: "The Reset"
+    type: good
+    narrative: >
+      You stopped. You breathed. You chose calm over chaos.
+      
+      The morning was rough, but it doesn't have to define
+      the rest of the day. Every moment is a chance to begin again.
+      
+      THE END
+      
+      You started the day: RESETTING
+      Morning mood: RECOVERING
+
+  ending_efficient_proud:
+    id: ending_efficient_proud
+    title: "Grace Under Pressure"
+    type: good
+    narrative: >
+      You overslept, but you didn't panic. You handled it.
+      That's a skill—staying calm when things go wrong.
+      
+      Today, you proved you have that skill.
+      
+      THE END
+      
+      You started the day: EFFICIENTLY
+      Morning mood: PROUD
+
+  ending_efficient_learn:
+    id: ending_efficient_learn
+    title: "Learning Curve"
+    type: neutral
+    narrative: >
+      The snooze button is a seductive enemy. Today it won.
+      But tomorrow? Tomorrow you'll be ready.
+      
+      Growth comes from recognizing our patterns—
+      and choosing to change them.
+      
+      THE END
+      
+      You started the day: LEARNING
+      Morning mood: DETERMINED
+
+  ending_focused:
+    id: ending_focused
+    title: "Tunnel Vision"
+    type: neutral
+    narrative: >
+      You're locked in. Nothing will distract you.
+      
+      There's power in focus—but remember to come up for air
+      sometimes. The world has more to offer than your to-do list.
+      
+      THE END
+      
+      You started the day: FOCUSED
+      Morning mood: DETERMINED
+
+  ending_energized:
+    id: ending_energized
+    title: "Full Power"
+    type: good
+    narrative: >
+      You're running on all cylinders. Mind clear. Body ready.
+      Soul at peace.
+      
+      Days like this don't come often. Use it wisely.
+      
+      THE END
+      
+      You started the day: ENERGIZED
+      Morning mood: POWERFUL
+
+  ending_open:
+    id: ending_open
+    title: "Adventure Awaits"
+    type: good
+    narrative: >
+      No plans. No pressure. Just possibility.
+      
+      The best stories often start with "I didn't plan this,
+      but..." Today might be one of those stories.
+      
+      THE END
+      
+      You started the day: OPEN
+      Morning mood: CURIOUS
+
+  ending_connected:
+    id: ending_connected
+    title: "Part of the Whole"
+    type: good
+    narrative: >
+      You see yourself in others today. Their struggles.
+      Their joys. Their quiet moments.
+      
+      We're all in this together—and today, you really feel it.
+      
+      THE END
+      
+      You started the day: CONNECTED
+      Morning mood: COMPASSIONATE
+
+  ending_contemplative:
+    id: ending_contemplative
+    title: "Deep Thoughts"
+    type: neutral
+    narrative: >
+      You took your time this morning. Maybe too much time.
+      But the thoughts you had, the feelings you felt—
+      they were worth exploring.
+      
+      Not every morning needs to be efficient.
+      
+      THE END
+      
+      You started the day: THOUGHTFULLY
+      Morning mood: REFLECTIVE
+
+  ending_prepared:
+    id: ending_prepared
+    title: "Ready for Anything"
+    type: good
+    narrative: >
+      You know your schedule. You have your tools.
+      You're as ready as anyone can be.
+      
+      Preparation meets opportunity—that's where success lives.
+      
+      THE END
+      
+      You started the day: PREPARED
+      Morning mood: CONFIDENT
+
+  ending_social:
+    id: ending_social
+    title: "Connected Threads"
+    type: neutral
+    narrative: >
+      You started the day reaching out, not turning inward.
+      The digital threads that connect us are fragile—
+      but they're real.
+      
+      Someone out there is glad they heard from you today.
+      
+      THE END
+      
+      You started the day: SOCIALLY
+      Morning mood: CONNECTED
+
+  ending_released:
+    id: ending_released
+    title: "Letting Go"
+    type: good
+    narrative: >
+      You enjoyed yourself. You felt guilty. Then you let it go.
+      
+      That's growth right there—enjoying life without letting
+      the aftermath ruin what came before.
+      
+      THE END
+      
+      You started the day: INDULGENTLY
+      Morning mood: FREE
+
+  ending_compensating:
+    id: ending_compensating
+    title: "Balance Seeking"
+    type: neutral
+    narrative: >
+      One indulgence balanced by one healthy choice.
+      That's how sustainable living works.
+      
+      You're not punishing yourself—you're balancing yourself.
+      There's a difference.
+      
+      THE END
+      
+      You started the day: BALANCING
+      Morning mood: DETERMINED

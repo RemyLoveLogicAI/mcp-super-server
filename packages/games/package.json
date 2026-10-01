@@ -1,0 +1,31 @@
+{
+  "name": "@mss/games",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Arcade: game modules (Continuum, LEDGERMON, story games, Aetheria) exposed as gated MCP tools",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "mss": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@mss/core": "workspace:*",
+    "@mss/orchestrator": "workspace:*",
+    "yaml": "^2.5.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "tsx": "^4.19.0"
+  },
+  "bin": {
+    "mss": "./bin/mss"
+  },
+  "files": [
+    "src",
+    "bin",
+    "stories",
+    "README.md"
+  ]
+}

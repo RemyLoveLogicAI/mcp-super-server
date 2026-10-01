@@ -36,6 +36,7 @@ export default defineConfig({
       "@mss/worlds": path.join(root, "packages/worlds/src"),
       "@mss/mesh": path.join(root, "packages/mesh/src"),
       "@mss/context-fabric": path.join(root, "packages/context-fabric/src"),
+      "@mss/games": path.join(root, "packages/games/src"),
     },
   },
 });

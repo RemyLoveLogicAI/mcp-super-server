@@ -20,7 +20,8 @@
     "@mss/tools": "workspace:*",
     "@mss/voice": "workspace:*",
     "@mss/worlds": "workspace:*",
-    "@supabase/supabase-js": "^2.100.0"
+    "@supabase/supabase-js": "^2.100.0",
+    "@mss/games": "workspace:*"
   },
   "devDependencies": {
     "tsx": "^4.19.0",

@@ -31,7 +31,8 @@ export type {
   WorldType,
   WorldConfig,
   Entity,
-  WorldEvent
+  WorldEvent,
+  WorldSnapshot
 } from "./world.js";
 
 export type { Timeline } from "./timeline.js";
