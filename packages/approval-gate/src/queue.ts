@@ -3,7 +3,7 @@
  * In-memory approval queue with TTL auto-expire and priority handling
  */
 
-import { nanoid } from "nanoid";
+import { randomUUID } from "node:crypto";
 import {
   ApprovalRequest,
   CreateApprovalRequest,
@@ -72,7 +72,7 @@ export class ApprovalQueue {
   async create(request: CreateApprovalRequest): Promise<ApprovalRequest> {
     const timeout_ms = request.timeout_ms ?? getDefaultTimeout(request.risk_level);
     const approvalRequest: ApprovalRequest = {
-      id: nanoid(),
+      id: randomUUID(),
       action: request.action,
       risk_level: request.risk_level,
       reversibility: request.reversibility,
