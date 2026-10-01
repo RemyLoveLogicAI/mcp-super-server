@@ -1,124 +1,142 @@
-# MCP Super-Server Memory
+# Repository Guidelines
 
-## Project Status (Updated 2026-03-24)
+## Project Overview
 
-### Completed Phases
+- Private pnpm monorepo: `mcp-super-server`.
+- Package manager: `pnpm@9.15.0`; workspaces: `apps/*`, `packages/*`; 18 workspace projects.
+- Purpose: unified architecture for voice-native agentic systems, cross-platform worlds, and multi-agent orchestration.
+- Contract-first source of truth: `packages/core` / `@mss/core`.
+- Contract-First Rule:
+  - No implementation is allowed to introduce new primitives not represented in `packages/core`.
+  - If it's not in `@mss/core`, it's not real.
+- Flagship proof: `apps/aetheria` validates `Identity -> Orchestrator -> Arcade -> Ledger` plus world-event fork/merge/rehydrate.
 
-| Phase | Description | Status |
-|-------|-------------|--------|
-| Phase 1 | Foundation (build, dependencies) | ✅ Complete |
-| Phase 2 | Vertical Slice (sessions, voice, gates) | ✅ Complete |
-| Phase 3 | Integration Tests | ✅ Complete (132 tests) |
-| Phase 4 | Security Hardening | ✅ Complete |
-| Phase 5 | Production Polish | 📋 Planned |
+## Architecture & Data Flow
 
-### Current Metrics
+- `@mss/core`: canonical events, resources, contracts, policies, IDs, and schemas.
+- `@mss/worlds`:
+  - `WorldState`: `applyEvent`, `replayEvents`, `rehydrate`; rejects duplicate event IDs.
+  - `TimelineManager`: `createTimeline`, `forkTimeline`, `mergeTimeline`; LCA traversal, fork bounds checks, and event-ID deduplication.
+- `@mss/orchestrator`: plan/execute workflow, budgets, `ToolExecutor`, DAG validation, self-dependency and cycle detection.
+- `@mss/identity`: `IdentityResolver`, `InMemoryIdentityStore`, Zod validation; supports web/Discord/Telegram/WhatsApp/Slack and other platforms.
+- `@mss/games`: gated `Arcade` registry; tool IDs use `<game>:<verb>` such as `continuum:status` and `ledgermon:battle`.
+- `@mss/ledger`: async append/replay, in-memory SHA-256 hash chain, and Supabase persistence path.
+- `@mss/voice`: FSM states `idle`, `listening`, `processing`, `speaking`, `interrupted`; barge-in emits pending-tool cancellation effects; ASR/TTS include mock, Whisper, and ElevenLabs providers.
+- `apps/server`: `MCPSuperServer` composition layer for identity, ledger, orchestrator, gates, sessions, and `RealToolExecutor`.
+- `apps/aetheria/src/index.ts`:
+  - Resolve `web/aetheria-demo-user`.
+  - Plan `continuum:status` plus `ledgermon:battle`.
+  - Convert battle outcome to `familiar_battled` `WorldEvent`.
+  - Fork a counterfactual timeline, verify distinct projections, merge with `mergeTimeline`, rehydrate fresh state, and append ledger events.
+- Primary flows:
+  - `apps/aetheria/src/index.ts`: Identity -> Orchestrator -> Arcade -> Ledger.
+  - `packages/worlds/src/timeline.ts` + `world.ts`: world-event fork/merge/rehydrate.
+  - `apps/server/src/server.ts`: dependency-injection composition.
+  - `packages/voice/src/fsm.ts`: voice events -> FSM effects.
 
-| Metric | Value |
-|--------|-------|
-| Packages | 13 |
-| Test Files | 9 |
-| Tests | 132 passed, 1 skipped |
-| Security Findings Resolved | 10/15 |
+## Key Directories
 
-### Security Controls
+- `apps/server/` — MCP server composition, HTTP, CLI, health, and metrics.
+- `apps/aetheria/` — flagship composition and branching-world proof.
+- `apps/dashboard/` — observability UI.
+- `packages/core/` — source-of-truth contracts and protocol types.
+- `packages/worlds/` — event-sourced world state and timelines.
+- `packages/orchestrator/` — plans, execution, budgets, and handoffs.
+- `packages/identity/` — canonical identity resolution and linking.
+- `packages/ledger/` — append-only ledger backends.
+- `packages/games/` — Arcade, Continuum, LEDGERMON, stories, CLI, and MCP adapters.
+- `packages/voice/` — voice transport FSM and providers.
+- `packages/tools/`, `mesh/`, `gateway/`, `context-fabric/`, `vigil/`, `voice-command/`, `approval-gate/`, `engine/` — supporting capabilities.
+- `.loki/specs/` — PRD and Aetheria increment specifications.
+- `.loki/CONTINUITY.md` — working memory.
+- `docs/whitepaper.md` — architecture source of truth; also see `docs/patent-draft.md` and package READMEs.
 
-| Control | Status | Config Variable |
-|---------|--------|-----------------|
-| Bearer Auth | ✅ | `MCP_API_SECRET` |
-| CORS Whitelist | ✅ | `MCP_ALLOWED_ORIGINS` |
-| Rate Limiting | ✅ | `MCP_RATE_LIMIT` |
-| Security Headers | ✅ | Built-in |
-| Session TTL | ✅ | `MCP_SESSION_TTL_MS` |
-| Input Validation | ✅ | `MCP_MAX_BODY_SIZE` |
-| Graceful Shutdown | ✅ | Built-in |
+## Development Commands
 
-### Live Endpoints
+- `pnpm install`
+- `pnpm build` — `turbo build`; builds `^build` dependencies; outputs `dist/**`.
+- `pnpm typecheck` — `turbo typecheck`.
+- `pnpm lint` — `turbo lint`.
+- `pnpm test` — `vitest run --config vitest.config.ts`.
+- `pnpm --filter @mss/<name> build`
+- `pnpm --filter @mss/<name> typecheck`
+- `pnpm --filter @mss/aetheria dev` — `tsx src/index.ts`.
+- `pnpm exec tsx apps/aetheria/src/index.ts` — Aetheria smoke path; requires live Continuum for `continuum:status`.
+- `packages/games/bin/mss games|tools|call|approvals|mcp`
+- `packages/games/bin/mss continuum status`
+- `CONTINUUM_BIN=continuum packages/games/scripts/e2e-continuum.sh`
+- Health checks:
+  - `scripts/health_check.ts` — tests 10 subsystems.
+  - `scripts/health_check.sh` — shell wrapper with build check.
+  - `./scripts/health_check.sh --verbose`
+  - Exit `0`: healthy; exit `1`: one or more checks failed.
 
-- **Health**: https://mcp-super-server-remysr.zocomputer.io/health
-- **Status**: https://mcp-super-server-remysr.zocomputer.io/status
-- **Dashboard**: https://remysr.zo.space/mcp-dashboard
+## Code Conventions & Common Patterns
 
----
+- TypeScript: ES2022/ESNext/Bundler, strict mode, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, ESM (`"type": "module"`).
+- Use `@mss/<capability>` imports; Vitest aliases resolve them to `packages/*/src`.
+- Prefer factories named `createX`: `createIdentityResolver`, `createDefaultArcade`, `createOrchestrator`, `createInMemoryLedger`.
+- Use PascalCase classes: `WorldState`, `TimelineManager`, `Arcade`, `InMemoryLedger`.
+- Tool IDs use `game:verb`; plans use `plan_id`, `step_id`, and `tool_id`.
+- Ledger events use `event_id`; `@mss/worlds` `WorldEvent` uses `id`.
+- Preserve async boundaries: `resolve`, `createPlan`, `executePlan`, `invoke`, and `append` are async.
+- Prefer `ToolExecutionResult`/`InvokeResult` failures (`ok`, `allow`, `require_human`, `deny`) at runtime boundaries.
+- Use exceptions for invalid DAGs, duplicate events, invalid fork/merge ancestry, and invalid stats.
+- Map errors at boundaries: `GameError -> deny`, fetch failures -> `GameError`, Arcade decisions -> orchestrator results.
+- Do not use `any`; preserve strict types and existing contracts.
 
-### Build & Test Commands
+## Important Files
 
-```bash
-pnpm build    # Build all 13 packages
-pnpm test     # Run all tests (24 tests across 6 test files)
-```
+- `package.json` — root scripts, pnpm version, and dependencies.
+- `pnpm-workspace.yaml` — workspace globs.
+- `turbo.json` — build/typecheck/lint/test task graph; `dev` has no cache.
+- `vitest.config.ts` — test discovery, aliases, timeouts, and V8 coverage.
+- `packages/core/src/` — canonical events/resources/contracts/policies/IDs/schemas.
+- `packages/worlds/src/world.ts` — event-sourced `WorldState`.
+- `packages/worlds/src/timeline.ts` — timeline creation, forking, LCA merge, and heads.
+- `packages/orchestrator/src/orchestrator.ts` — plan validation and execution.
+- `packages/games/src/arcade.ts` — tool registry and approval gates.
+- `packages/ledger/src/memory.ts` — development/test ledger and SHA-256 chain.
+- `packages/voice/src/fsm.ts` — voice state transitions and cancellation effects.
+- `apps/server/src/server.ts` — server dependency composition.
+- `apps/aetheria/src/index.ts` — end-to-end Aetheria proof.
+- `.loki/specs/PRD.md`, `.loki/specs/PRD-2-aetheria-increment-1.md`, `.loki/specs/PRD-3-aetheria-increment-2.md` — specifications.
+- `docs/whitepaper.md` — source of truth for architecture; `docs/patent-draft.md` — patent context.
 
-### Key Architecture
+## Runtime/Tooling Preferences
 
-- **packages/core**: Events, resources, policies, contracts (source of truth)
-- **packages/orchestrator**: Planning and execution with budgets and callbacks
-- **packages/voice**: Voice FSM with barge-in support
-- **packages/tools**: Tool gates (permissive, read_only, write_approval)
-- **packages/ledger**: In-memory event store with replay
-- **apps/server**: Composition layer wiring all components
+- Use pnpm as the canonical package manager and task runner; run TypeScript directly with `pnpm exec tsx`.
+- Bun is used only by the documented health-check path (`bun run scripts/health_check.ts` / `./scripts/health_check.sh`); do not generalize it.
+- Environment:
+  - `CONTINUUM_URL` defaults to `http://127.0.0.1:7777`.
+  - Actor variables: `MSS_ACTOR`, `CONTINUUM_ACTOR`.
+  - `MSS_HOME` defaults to `~/.mss`.
+  - Server configuration uses `MCP_*` variables.
+- Ports:
+  - `3000` — Arcade HTTP.
+  - `7777` — Continuum daemon.
+- Continuum is localhost-only; live `continuum:status` is not a unit-test dependency.
+- Turbo tasks: `build`, `typecheck`, `lint`, `test`; `dev` is uncached.
 
-### Test Counts
+## Testing & QA
 
-| Package | Tests |
-|---------|-------|
-| @mss/orchestrator | 10 |
-| @mss/server | 4 |
-| @mss/voice | 7 |
-| @mss/worlds | 5 |
-| @mss/tools | 3 |
-| @mss/ledger | 2 (+ 1 skipped) |
-| **Total** | **31** |
-
-### Contract-First Rule
-
-No implementation is allowed to introduce new primitives not represented in `packages/core`.
-If it's not in `@mss/core`, it's not real.
-
-## Health Check System (Added 2026-03-24)
-
-### Scripts
-
-| Script | Path | Purpose |
-|--------|------|---------|
-| TypeScript health check | `scripts/health_check.ts` | Comprehensive subsystem testing |
-| Shell wrapper | `scripts/health_check.sh` | Executable wrapper with build check |
-
-### Subsystems Tested
-
-1. **Server Health** — Verifies `server.health()` returns healthy status with all checks enabled
-2. **Server Status** — Validates version, environment, and session tracking
-3. **Identity Resolution** — Tests identity linking and canonical user resolution
-4. **Voice Session Creation** — Creates voice sessions with proper FSM initialization
-5. **Voice FSM Transitions** — Tests AUDIO_START → ASR_FINAL state transitions (idle → listening → processing)
-6. **Tool Registry Access** — Registers tools and validates descriptor handling
-7. **Tool Gate Evaluation** — Tests policy gate evaluation for read/write permissions
-8. **Ledger Write** — Appends events to the in-memory ledger
-9. **Ledger Read/Replay** — Replays events from ledger to verify persistence
-10. **Session Cleanup** — Verifies session termination and resource cleanup
-
-### Automated Monitoring
-
-- **Schedule**: Every 5 minutes (`FREQ=MINUTELY;INTERVAL=5`)
-- **Agent ID**: `15990eee-2b6d-45d0-9f89-aa762f3f7a38`
-- **Delivery**: Email alerts on failure only
-- **Prerequisites**: Project built (`pnpm build`), bun available in PATH
-
-### Manual Usage
-
-```bash
-# Run TypeScript health check directly
-bun run scripts/health_check.ts
-
-# Run with shell wrapper (includes build check)
-./scripts/health_check.sh
-
-# Run with verbose output
-./scripts/health_check.sh --verbose
-```
-
-### Exit Codes
-
-| Code | Meaning |
-|------|---------|
-| 0 | All health checks passed (HEALTHY) |
-| 1 | One or more health checks failed (UNHEALTHY) |
+- Framework: Vitest `^4.1.1`; globals enabled; Node environment.
+- Test discovery: `packages/**/tests/**/*.test.ts` and `apps/**/tests/**/*.test.ts`.
+- Exclude `node_modules` and `dist`; test and hook timeouts are 10 seconds.
+- V8 coverage includes `packages/**/src/**/*.ts` and `apps/**/src/**/*.ts`; excludes `index.ts` and `.d.ts`; no numeric threshold is configured.
+- Test directories include:
+  - `packages/ledger/tests/`, `worlds/tests/`, `orchestrator/tests/`, `identity/tests/`, `games/tests/`, `voice/tests/`, `tools/tests/`, `voice-command/tests/`, `approval-gate/tests/`.
+  - `apps/aetheria/tests/` and `apps/server/tests/`.
+- Aetheria tests:
+  - `apps/aetheria/tests/branching.test.ts` — fork, distinct projections, merge, rehydrate, battle, and ledger.
+  - `apps/aetheria/tests/executor.test.ts` — Arcade allow/deny/approval mapping.
+- Fixtures: `createInMemoryLedger`, `MemoryApprovalStore`, and `InMemoryIdentityStore`.
+- Unit tests never touch the live daemon; use deterministic in-memory fixtures. Live Continuum belongs only in the `tsx` smoke path or E2E script.
+- QA commands:
+  - `pnpm test`
+  - `pnpm exec vitest run --config vitest.config.ts apps/aetheria/tests`
+  - `pnpm exec vitest run --config vitest.config.ts packages/games apps/server`
+  - `pnpm exec vitest run --config vitest.config.ts --coverage`
+  - `pnpm --filter @mss/aetheria typecheck`
+  - `pnpm --filter @mss/worlds typecheck`
+  - `pnpm typecheck`
