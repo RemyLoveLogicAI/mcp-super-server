@@ -31,7 +31,7 @@ export const ToolMatchSchema = z.object({
   tool_id: z.string(),
   tool_name: z.string(),
   capability_score: z.number().min(0).max(1),
-  parameters: z.record(z.unknown()).optional(),
+  parameters: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type ToolMatch = z.infer<typeof ToolMatchSchema>;
@@ -146,7 +146,7 @@ export const FlowEventSchema = z.object({
     "barge_in_received",
     "flow_cancelled",
   ]),
-  data: z.record(z.unknown()).optional(),
+  data: z.record(z.string(), z.unknown()).optional(),
   timestamp: z.string(),
 });
 

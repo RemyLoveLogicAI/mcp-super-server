@@ -50,7 +50,7 @@ export const VoiceFSMEvent = z.discriminatedUnion("type", [
   z.object({ type: z.literal("AUDIO_END") }),
   z.object({ type: z.literal("ASR_PARTIAL"), text: z.string() }),
   z.object({ type: z.literal("ASR_FINAL"), text: z.string() }),
-  z.object({ type: z.literal("INTENT_RESOLVED"), intent: z.record(z.unknown()) }),
+  z.object({ type: z.literal("INTENT_RESOLVED"), intent: z.record(z.string(), z.unknown()) }),
   z.object({ type: z.literal("TTS_START") }),
   z.object({ type: z.literal("TTS_COMPLETE") }),
   z.object({ type: z.literal("BARGE_IN") }),

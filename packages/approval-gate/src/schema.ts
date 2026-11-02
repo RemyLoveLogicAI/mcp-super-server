@@ -29,7 +29,7 @@ export const ApprovalRequestSchema = z.object({
   reversibility: z.boolean(),
   timeout_ms: z.number(),
   created_at: z.string(),
-  context: z.record(z.unknown()),
+  context: z.record(z.string(), z.unknown()),
   proposed_by: z.string(),
   status: ApprovalStatusSchema,
 });
@@ -43,7 +43,7 @@ export const CreateApprovalRequestSchema = z.object({
   risk_level: RiskLevelSchema,
   reversibility: z.boolean(),
   timeout_ms: z.number().optional(),
-  context: z.record(z.unknown()).optional(),
+  context: z.record(z.string(), z.unknown()).optional(),
   proposed_by: z.string(),
 });
 export type CreateApprovalRequest = z.infer<typeof CreateApprovalRequestSchema>;
