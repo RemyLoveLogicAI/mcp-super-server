@@ -2,6 +2,7 @@
  * mss — the super-server's command line for games.
  *
  *   mss games                                  every game, its status and health
+ *   mss verify                                 smoke safe tools; fail if any game lacks a verified tool
  *   mss tools [game]                           tools and their side-effect class
  *   mss call <tool> [key=value ...] [--json '{...}'] [--yes]
  *   mss approvals | approve <id> | deny <id>   human decisions on permanent actions
@@ -98,6 +99,37 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         console.log(`  ${g.description}`);
       }
       return 0;
+    }
+    case "verify": {
+      const probes: Record<string, { tool: string; input: Record<string, unknown> }> = {
+        continuum: { tool: "continuum:status", input: {} },
+        ledgermon: { tool: "ledgermon:battle", input: {
+          a_did: "did:zo:verify-a", a: { spd: 80, sta: 50, acc: 90, tem: 20, app: 40 },
+          b_did: "did:zo:verify-b", b: { spd: 60, sta: 50, acc: 70, tem: 10, app: 30 },
+        } },
+        stories: { tool: "stories:list", input: {} },
+        dungeon: { tool: "dungeon:roll", input: {} },
+      };
+      let checked = 0;
+      for (const g of arcade.listGames()) {
+        try {
+          const health = await g.health();
+          const probe = probes[g.id];
+          if (!health.ok || g.status !== "live" || !probe || !g.tools.some(t => t.descriptor.tool_id === probe.tool)) {
+            console.log(`NOT VERIFIED ${g.id}: ${!health.ok ? health.detail : "no smoke-tested tool"}`);
+            continue;
+          }
+          const result = await arcade.invoke(probe.tool, probe.input, { actor, surface: "cli" });
+          if (result.decision === "allow") {
+            checked++;
+            console.log(`TOOL OK ${g.id}: ${probe.tool}`);
+          } else console.log(`NOT VERIFIED ${g.id}: ${result.decision === "deny" ? result.reason : "requires approval"}`);
+        } catch (error) {
+          console.log(`NOT VERIFIED ${g.id}: ${String(error)}`);
+        }
+      }
+      console.log(`${checked}/${arcade.listGames().length} games have a passing tool smoke check (not proof of interactive play)`);
+      return checked === arcade.listGames().length ? 0 : 1;
     }
     case "tools": {
       for (const t of arcade.listTools().filter(t => !rest[0] || t.descriptor.tool_id.startsWith(rest[0] + ":"))) {

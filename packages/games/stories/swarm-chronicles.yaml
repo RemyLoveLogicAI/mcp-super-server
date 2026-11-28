@@ -1,0 +1,87 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# SWARM CHRONICLES: THE SENTIENT RUNTIME
+# A context-aware CYOA game driven by KanBot board state and LifeOS memory
+# ═══════════════════════════════════════════════════════════════════════════
+
+id: swarm-chronicles-v1
+version: "1.0.0"
+title: "Swarm Chronicles: The Sentient Runtime"
+description: >
+  Step into the control room of LoveLogicAI. Real agent cards from KanBot
+  and durable memories from Mem and Supermemory shape the operational narrative.
+author: "LoveLogicAI"
+
+contextPermissions:
+  kanbot: true
+  memory: true
+  valtown: true
+
+startScene: command_deck
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SCENES
+# ═══════════════════════════════════════════════════════════════════════════
+
+scenes:
+  command_deck:
+    id: command_deck
+    title: "The Central Command Deck"
+    narrative: >
+      Holographic readouts pulse softly across the terminal.
+      
+      {{active_kanbot_status}}
+      
+      {{durable_memory_echo}}
+      
+      MCP Router stands ready, routing agent telemetry between the edge relay
+      and your local core. What action will the operator take?
+
+    contextQuery:
+      - contextType: kanbot
+        query: "active_cards_summary"
+        targetVariable: active_kanbot_status
+        transform: summarize
+        fallbackValue: "KanBot reports all swarm threads idling in READY state."
+
+      - contextType: memory
+        query: "principal_priorities"
+        targetVariable: durable_memory_echo
+        transform: summarize
+        fallbackValue: "Mem and Supermemory hold aligned directives: autonomous agent sovereignty."
+
+    choices:
+      - id: dispatch_val
+        text: "Trigger Val Town Edge Relay with synthetic telemetry."
+        targetScene: edge_dispatch
+        consequences:
+          relay_triggered: true
+
+      - id: review_board
+        text: "Inspect active KanBot state transitions."
+        targetScene: kanbot_inspection
+        consequences:
+          inspected_board: true
+
+  edge_dispatch:
+    id: edge_dispatch
+    title: "Edge Relay Ingestion"
+    narrative: >
+      A signal beams to Val Town. The edge relay receives the event, verifies
+      Mem primary, mirrors to Supermemory, and issues an execution receipt.
+      The swarm acknowledges the impulse.
+    choices:
+      - id: return_deck
+        text: "Return to Command Deck."
+        targetScene: command_deck
+
+  kanbot_inspection:
+    id: kanbot_inspection
+    title: "KanBot Core Diagnostics"
+    narrative: >
+      The Kanban state engine hums. Columns strictly guard transitions from
+      BACKLOG -> READY -> IN_PROGRESS -> REVIEW -> DONE. No hallucinated
+      progress escapes the critic verifier.
+    choices:
+      - id: return_deck
+        text: "Return to Command Deck."
+        targetScene: command_deck

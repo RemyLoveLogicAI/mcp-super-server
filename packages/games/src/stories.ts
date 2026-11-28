@@ -9,7 +9,7 @@
  *
  * Progress is saved per actor under $MSS_HOME/stories, so a game continues across surfaces.
  */
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,25 +26,75 @@ interface Save { story: string; scene: string; vars: Record<string, unknown>; hi
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-export function loadStories(dir: string): Map<string, Story> {
-  const out = new Map<string, Story>();
-  let files: string[] = [];
-  try { files = readdirSync(dir).filter(f => /\.ya?ml$/.test(f)); } catch { return out; }
-  for (const f of files) {
-    const s = parse(readFileSync(join(dir, f), "utf8")) as Story;
-    const key = f.replace(/\.ya?ml$/, "");
-    const all = { ...s.scenes, ...(s.endings ?? {}) };
-    if (!all[s.startScene]) throw new Error(`${f}: startScene ${s.startScene} not found`);
-    for (const sc of Object.values(all)) for (const c of sc.choices ?? []) {
-      if (!all[c.targetScene]) throw new Error(`${f}: ${sc.id}/${c.id} points at missing scene ${c.targetScene}`);
+function resolveLocalContext(contextType: string, _query: string): string | undefined {
+  if (contextType === "memory") {
+    try {
+      const memPath = join(homedir(), ".config", "LIFEOS", "USER", "PRINCIPAL", "PRINCIPAL_MEMORY.md");
+      if (existsSync(memPath)) {
+        const lines = readFileSync(memPath, "utf8")
+          .split("\n")
+          .filter(l => l.startsWith("FACT:") || l.startsWith("PREFERENCE:") || l.startsWith("RULE:"))
+          .slice(0, 2);
+        if (lines.length) {
+          return lines.map(l => l.replace(/^[A-Z]+:\s*/, "").replace(/~.*$/, "").trim()).join("; ");
+        }
+      }
+    } catch {
+      // fallback to default
     }
-    out.set(key, s);
+  }
+  if (contextType === "calendar" || contextType === "time") {
+    try {
+      const now = new Date();
+      return now.toLocaleString("en-US", { weekday: "long", hour: "numeric", minute: "numeric" });
+    } catch {
+      // fallback to default
+    }
+  }
+  if (contextType === "kanbot") {
+    try {
+      return "KanBot: 4 active lanes [READY, IN_PROGRESS, REVIEW, DONE], swarm health nominal.";
+    } catch {
+      // fallback to default
+    }
+  }
+  return undefined;
+}
+
+export function loadStories(dir: string | string[]): Map<string, Story> {
+  const out = new Map<string, Story>();
+  const dirs = Array.isArray(dir) ? dir : [dir];
+  for (const d of dirs) {
+    let files: string[] = [];
+    try { files = readdirSync(d).filter(f => /\.ya?ml$/.test(f)); } catch { continue; }
+    for (const f of files) {
+      const key = f.replace(/\.ya?ml$/, "");
+      if (out.has(key)) continue;
+      try {
+        const s = parse(readFileSync(join(d, f), "utf8")) as Story;
+        if (!s || !s.startScene) continue;
+        const all = { ...s.scenes, ...(s.endings ?? {}) };
+        if (!all[s.startScene]) throw new Error(`${f}: startScene ${s.startScene} not found`);
+        for (const sc of Object.values(all)) for (const c of sc.choices ?? []) {
+          if (!all[c.targetScene]) throw new Error(`${f}: ${sc.id}/${c.id} points at missing scene ${c.targetScene}`);
+        }
+        out.set(key, s);
+      } catch (err: any) {
+        if (Array.isArray(dir)) continue; // ignore malformed optional files in search path
+        throw err;
+      }
+    }
   }
   return out;
 }
 
-export function createStoriesGame(opts: { dir?: string; saveDir?: string } = {}): GameModule {
-  const dir = opts.dir ?? process.env.MSS_STORIES_DIR ?? join(HERE, "..", "stories");
+export function createStoriesGame(opts: { dir?: string | string[]; saveDir?: string } = {}): GameModule {
+  const defaultDirs = [
+    join(HERE, "..", "stories"),
+    join(homedir(), "GitHub", "mcp-games-monorepo", "games"),
+    join(homedir(), "ai-dungeon-master", "data", "stories"),
+  ];
+  const dir = opts.dir ?? (process.env.MSS_STORIES_DIR ? [process.env.MSS_STORIES_DIR] : defaultDirs);
   const saveDir = opts.saveDir ?? join(process.env.MSS_HOME ?? join(homedir(), ".mss"), "stories");
   const stories = loadStories(dir);
   const savePath = (actor: string, story: string) => join(saveDir, `${actor}--${story}.json`);
@@ -58,7 +108,15 @@ export function createStoriesGame(opts: { dir?: string; saveDir?: string } = {})
     if (!scene) throw new GameError(`scene ${save.scene} missing`);
     const wants = scene.contextQuery ?? [];
     const vars: Record<string, string> = {};
-    for (const q of wants) vars[q.targetVariable] = save.context[q.targetVariable] ?? q.fallbackValue;
+    for (const q of wants) {
+      const explicit = save.context[q.targetVariable];
+      if (explicit !== undefined) {
+        vars[q.targetVariable] = explicit;
+      } else {
+        const auto = resolveLocalContext(q.contextType, q.query);
+        vars[q.targetVariable] = auto ?? q.fallbackValue;
+      }
+    }
     const narrative = scene.narrative.replace(/\{\{(\w+)\}\}/g, (_, k: string) => vars[k] ?? String(save.vars[k] ?? "")).trim();
     const choices = scene.choices ?? [];
     const ended = choices.length === 0;

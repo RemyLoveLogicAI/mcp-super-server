@@ -1,0 +1,73 @@
+{
+  "id": "the-bell-beneath-the-bridge",
+  "version": "1.0.0",
+  "title": "The Bell Beneath the Bridge",
+  "description": "An original D20-fantasy branching scenario for exercising the game-session and export contracts.",
+  "author": "AI Dungeon Master contributors",
+  "startScene": "moonlit_causeway",
+  "scenes": {
+    "moonlit_causeway": {
+      "id": "moonlit_causeway",
+      "title": "The Moonlit Causeway",
+      "narrative": "A cracked stone causeway crosses a black ravine. A bell sounds from somewhere below, and a stranded courier watches the far bank.",
+      "choices": [
+        {
+          "id": "follow_the_bell",
+          "text": "Descend toward the bell and search for its source.",
+          "targetScene": "sunken_shrine"
+        },
+        {
+          "id": "help_the_courier",
+          "text": "Help the courier reach the watcher's camp.",
+          "targetScene": "watchers_camp"
+        }
+      ]
+    },
+    "sunken_shrine": {
+      "id": "sunken_shrine",
+      "title": "The Sunken Shrine",
+      "narrative": "Under the causeway, a small shrine glows beneath the water. Its keeper asks you to relight the lantern before the tide turns.",
+      "choices": [
+        {
+          "id": "relight_the_lantern",
+          "text": "Restore the lantern and let the keeper guide you out.",
+          "targetScene": "quiet_return"
+        },
+        {
+          "id": "take_the_silver_bell",
+          "text": "Take the silver bell and race the rising water.",
+          "targetScene": "rising_tide"
+        }
+      ]
+    },
+    "watchers_camp": {
+      "id": "watchers_camp",
+      "title": "The Watcher's Camp",
+      "narrative": "The courier leads you to a camp of bridge watchers. Their supplies are low, but they know a safe route through the ravine.",
+      "choices": [
+        {
+          "id": "share_supplies",
+          "text": "Share what you can and travel with the watchers.",
+          "targetScene": "quiet_return"
+        },
+        {
+          "id": "take_the_ravine_path",
+          "text": "Take the quicker ravine path alone.",
+          "targetScene": "rising_tide"
+        }
+      ]
+    },
+    "quiet_return": {
+      "id": "quiet_return",
+      "title": "A Quiet Return",
+      "narrative": "At dawn, the bell falls silent. The bridge is safe again, and the people you helped remember your name.",
+      "choices": []
+    },
+    "rising_tide": {
+      "id": "rising_tide",
+      "title": "The Rising Tide",
+      "narrative": "Water surges through the ravine. You escape with a hard-won story, but the crossing will need rebuilding.",
+      "choices": []
+    }
+  }
+}

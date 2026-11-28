@@ -1,4 +1,5 @@
 import { createServer, type Server } from "node:http";
+import { spawn } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -53,6 +54,7 @@ describe("arcade registry", () => {
       "continuum:live",
       "ledgermon:live",
       "stories:live",
+      "dungeon:live",
       "aetheria:scaffold",
       "moa-flappy:scaffold",
       "remyman:scaffold",
@@ -80,6 +82,32 @@ describe("arcade registry", () => {
     const h = await moa.health();
     expect(h.ok).toBe(true);
     expect(h.detail).toContain("MoA Game");
+  });
+  it("fails verification honestly when discovered games have no tool", async () => {
+    const child = spawn(join(import.meta.dirname, "../bin/mss"), ["verify"], {
+      env: { ...process.env, CONTINUUM_URL: url, MSS_HOME: mkdtempSync(join(tmpdir(), "mss-verify-")) },
+    });
+    let output = "";
+    child.stdout.on("data", chunk => output += chunk);
+    const exit = await new Promise<number | null>(resolve => child.on("close", resolve));
+    expect(exit).toBe(1);
+    expect(output).toContain("TOOL OK ledgermon: ledgermon:battle");
+    expect(output).toContain("TOOL OK dungeon: dungeon:roll");
+    expect(output).toContain("NOT VERIFIED aetheria: no smoke-tested tool");
+    expect(output).toContain("4/11 games have a passing tool smoke check");
+  });
+
+  it("dungeon:roll rolls a valid D20 and detects criticals", async () => {
+    const a = createDefaultArcade(new MemoryApprovalStore(), url);
+    const res = await a.invoke("dungeon:roll", { mode: "Advantage", modifier: 5 }, ctx);
+    expect(res.decision).toBe("allow");
+    if (res.decision === "allow") {
+      const data = res.output.data as any;
+      expect(data.d20).toBeGreaterThanOrEqual(1);
+      expect(data.d20).toBeLessThanOrEqual(20);
+      expect(data.total).toBe(data.d20 + 5);
+      expect(res.output.text).toContain("Rolled");
+    }
   });
 });
 
