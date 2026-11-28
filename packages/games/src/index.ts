@@ -9,6 +9,7 @@ export { createContinuumGame } from "./continuum.js";
 export type { ContinuumOptions } from "./continuum.js";
 export { createLedgermonGame, createAetheriaGame, executeFamiliarBattle } from "./ledgermon.js";
 export { createStoriesGame, loadStories } from "./stories.js";
+export { createDungeonGame } from "./dungeon.js";
 export {
   createMoaFlappyGame,
   createRemyManGame,
@@ -30,6 +31,7 @@ import { Arcade } from "./arcade.js";
 import { createContinuumGame } from "./continuum.js";
 import { createAetheriaGame, createLedgermonGame } from "./ledgermon.js";
 import { createStoriesGame } from "./stories.js";
+import { createDungeonGame } from "./dungeon.js";
 import {
   createMoaFlappyGame,
   createRemyManGame,
@@ -45,6 +47,7 @@ export function createDefaultArcade(approvals?: ApprovalStore, continuumUrl?: st
     .register(createContinuumGame(continuumUrl ? { url: continuumUrl } : {}))
     .register(createLedgermonGame())
     .register(createStoriesGame())
+    .register(createDungeonGame())
     .register(createAetheriaGame())
     .register(createMoaFlappyGame())
     .register(createRemyManGame())
